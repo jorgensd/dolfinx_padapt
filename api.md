@@ -28,6 +28,13 @@
    :members:
 ```
 
+## DG building blocks
+
+```{eval-rst}
+.. automodule:: dolfinx_padapt.dg
+   :members:
+```
+
 ## Forms
 
 ```{eval-rst}

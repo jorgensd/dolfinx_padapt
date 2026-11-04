@@ -89,32 +89,46 @@ def print_summary(
 
 
 class SolutionWriter:
-    """Write the solution (as a broken function of the maximal degree) and the degree of each
-    cell to VTX files, one time step per iteration.
+    """Write a field of the solution (as a broken function of the maximal degree) and the degree
+    of each cell to VTX files, one time step per iteration.
 
     The mesh does not change in P-adaptivity, so a single file holds all iterations.
     """
 
-    def __init__(self, approach: Approach, folder: Path | str, name: str | None = None):
+    def __init__(
+        self,
+        approach: Approach,
+        folder: Path | str,
+        name: str | None = None,
+        field: str | None = None,
+    ):
         mesh = approach.mesh
+        fields = {f.name: f for f in approach.problem.fields}
+        self.field = field or next(iter(fields))
         name = name or approach.name
         folder = Path(folder)
         folder.mkdir(parents=True, exist_ok=True)
         element = basix.ufl.element(
-            "DG", mesh.basix_cell(), approach.degrees.pmax, basix.LagrangeVariant.equispaced
+            "DG",
+            mesh.basix_cell(),
+            max(fields[self.field].degree(approach.degrees.pmax), 1),
+            basix.LagrangeVariant.equispaced,
+            shape=fields[self.field].shape,
         )
-        self.u = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, element), name="u")
+        self.u = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, element), name=self.field)
         self._writers = [
-            dolfinx.io.VTXWriter(mesh.comm, folder / f"{name}_u.bp", [self.u], engine="BP4"),
             dolfinx.io.VTXWriter(
-                mesh.comm, folder / f"{name}_p.bp", [approach.degrees.p], engine="BP4"
+                mesh.comm, folder / f"{name}_{self.field}.bp", [self.u], engine="BP4"
+            ),
+            dolfinx.io.VTXWriter(
+                mesh.comm, folder / f"{name}_degrees.bp", [approach.degrees.p], engine="BP4"
             ),
         ]
 
     def __call__(self, approach: Approach, result: IterationResult):
         """Write the current solution (can be used as a callback of
         :func:`dolfinx_padapt.adaptivity.solve_adaptive`)."""
-        approach.interpolate_solution(self.u)
+        approach.interpolate_solution(self.u, self.field)
         for writer in self._writers:
             writer.write(float(result.iteration))
 

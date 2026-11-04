@@ -40,7 +40,7 @@ from dolfinx_padapt.forms import Parameters
 from dolfinx_padapt.plotting import plot_iteration
 from dolfinx_padapt.postprocessing import print_header, print_iteration, print_summary
 
-mesh = create_pacman(MPI.COMM_WORLD, h=0.1, h_corner=0.005)
+mesh = create_pacman(MPI.COMM_WORLD, h=0.3, h_corner=0.01)
 params = Parameters(pmin=1, pmax=6, continuous=True)
 # -
 
@@ -52,7 +52,7 @@ degrees = DegreeField(mesh, params.pmin, params.pmax)
 submesh_approach = SubmeshApproach(degrees, params)
 print_header()
 histories = {
-    "submesh": solve_adaptive(submesh_approach, max_iterations=12, callback=print_iteration)
+    "submesh": solve_adaptive(submesh_approach, max_iterations=15, callback=print_iteration)
 }
 # -
 
@@ -77,7 +77,7 @@ degrees = DegreeField(mesh, params.pmin, params.pmax)
 restricted_approach = RestrictedApproach(degrees, params)
 print_header()
 histories["restricted"] = solve_adaptive(
-    restricted_approach, max_iterations=12, callback=print_iteration
+    restricted_approach, max_iterations=15, callback=print_iteration
 )
 # -
 

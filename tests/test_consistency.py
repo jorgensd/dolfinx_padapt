@@ -19,6 +19,7 @@ from dolfinx_padapt.forms import (
     nitsche_boundary,
     sipg_interior,
 )
+from dolfinx_padapt.problems import ElasticityProblem, StokesProblem
 
 QDEG = 8
 PMAX = 3
@@ -42,7 +43,7 @@ def solve_all(name, mesh, params, owned_degrees, problem=None):
     approach = APPROACHES[name](degrees, params, problem)
     approach.update()
     A, B = approach.assemble()
-    x = approach.problem.solve(A, B)
+    x = approach.problem.solve(A, B, approach.nullspace())
     approach.set_solution(x)
     eta = approach.estimate()
     eta_global = np.sqrt(mesh.comm.allreduce(np.sum(eta**2), op=MPI.SUM))
@@ -275,3 +276,76 @@ def test_coarsen(mesh):
     assert np.all(degrees.cell_degrees[half] == 3)
     assert np.all(degrees.cell_degrees[num_owned // 2 : num_owned] == 1)
     assert mark_cells_for_coarsening(np.zeros(num_owned), 0.1, degrees).size == 0
+
+
+# Linear elasticity and Stokes (submesh approach only)
+
+
+@pytest.fixture(scope="module")
+def square():
+    return dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, 3, 3)
+
+
+def quadratic_displacement(x):
+    return ufl.as_vector((x[0] ** 2 + x[1], x[0] * x[1] - x[1] ** 2))
+
+
+def stokes_velocity(x):
+    # The curl of the stream function x²y - xy², which is divergence free
+    return ufl.as_vector((x[0] ** 2 - 2 * x[0] * x[1], x[1] ** 2 - 2 * x[0] * x[1]))
+
+
+def stokes_pressure(x):
+    return x[0] - x[1]
+
+
+def test_elasticity_exact_quadratic(square):
+    """A quadratic displacement is reproduced on any distribution of degrees >= 2."""
+    params = Parameters(pmin=2, pmax=3, quadrature_degree=6)
+    problem = ElasticityProblem(square, quadratic_displacement, mu=1.0, lmbda=2.0)
+    degrees = pseudo_random_degrees(square, params.pmin, params.pmax)
+    values, _, _ = solve_all("submesh", square, params, degrees, problem)
+    assert values["L2"] < 1e-10
+    assert values["H1"] < 1e-9
+
+
+@pytest.mark.parametrize("continuous", [False, True])
+def test_stokes_exact_quadratic(square, continuous):
+    """A quadratic velocity and linear pressure are reproduced on any distribution of degrees
+    >= 2 (the pressure has one degree less), with a pressure nullspace."""
+    params = Parameters(pmin=2, pmax=3, quadrature_degree=6, continuous=continuous)
+    problem = StokesProblem(square, stokes_velocity, stokes_pressure)
+    degrees = pseudo_random_degrees(square, params.pmin, params.pmax)
+    values, _, _ = solve_all("submesh", square, params, degrees, problem)
+    assert values["u_L2"] < 1e-10
+    assert values["u_H1"] < 1e-9
+    assert values["p_L2"] < 1e-9
+
+
+def test_stokes_converges(square):
+    """The errors decrease with the degree (including degree 1/0)."""
+    problem = StokesProblem(
+        square,
+        lambda x: ufl.as_vector(
+            (
+                ufl.sin(ufl.pi * x[1]) * ufl.cos(ufl.pi * x[0]),
+                -ufl.sin(ufl.pi * x[0]) * ufl.cos(ufl.pi * x[1]),
+            )
+        ),
+        lambda x: ufl.sin(ufl.pi * x[0]) * ufl.cos(ufl.pi * x[1]),
+    )
+    params = Parameters(pmin=1, pmax=3, quadrature_degree=8)
+    errors = [
+        solve_all("submesh", square, params, np.full(owned_cells(square), k, np.int32), problem)[0]
+        for k in (1, 2, 3)
+    ]
+    for key in ("u_H1", "p_L2"):
+        assert errors[1][key] < errors[0][key] and errors[2][key] < errors[1][key], key
+
+
+@pytest.mark.parametrize("name", ["restricted", "hierarchical"])
+def test_vector_problems_require_submesh(square, name):
+    params = Parameters(pmin=1, pmax=2)
+    problem = ElasticityProblem(square, quadratic_displacement)
+    with pytest.raises(NotImplementedError):
+        APPROACHES[name](DegreeField(square, 1, 2), params, problem)

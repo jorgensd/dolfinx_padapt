@@ -11,12 +11,11 @@ It provides three representations of such a space:
 - `RestrictedApproach`: one space per degree on the whole mesh, with a restricted dofmap
 - `HierarchicalApproach`: sub-matrices of one hierarchical (Legendre) DG space of the maximal degree
 
-Problems are given as a source term and Dirichlet data for $-\Delta$: the Laplace eigenvalue problem
-(`EigenvalueProblem`) and the Poisson equation with a manufactured solution (`PoissonProblem`), in
-2D and 3D.
+It solves the Laplace eigenvalue problem, the Poisson equation, linear elasticity and the Stokes
+equations, in 2D and 3D.
 
 The documentation, with the method, the demos and a comparison of the approaches, is at
-<https://jorgensd.github.io/dolfinx-padapt/>.
+<https://jorgensd.github.io/dolfinx_padapt/>.
 
 ## Installation
 

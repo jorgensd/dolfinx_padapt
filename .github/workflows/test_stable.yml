@@ -89,6 +89,8 @@ jobs:
           mpirun -n 2 python3 demo_continuous.py
           mpirun -n 2 python3 demo_comparison.py
           mpirun -n 2 python3 demo_poisson.py
+          mpirun -n 2 python3 demo_elasticity.py
+          mpirun -n 2 python3 demo_stokes.py
 
       - name: Mark the tests as passed
         id: passed

@@ -10,6 +10,8 @@ spheres coloured by degree), showing where the space has been enriched.
 import typing
 import weakref
 
+from mpi4py import MPI
+
 import basix.ufl
 import dolfinx
 import dolfinx.plot
@@ -20,6 +22,7 @@ from matplotlib.colors import to_rgb
 from .adaptivity import IterationResult, degree_histogram
 from .approaches import Approach
 from .degrees import DegreeField
+from .postprocessing import print_header, print_iteration
 
 #: Categorical colours, assigned in fixed order (to the degrees from ``pmin``, or to the runs)
 CATEGORICAL_COLORS = [
@@ -141,6 +144,8 @@ def plot_solution(
         raise NotImplementedError(
             "The nodes are drawn in the plane, use plot_degrees and plot_function in 3D"
         )
+    if len(approach.problem.fields) != 1 or approach.problem.fields[0].shape != ():
+        raise NotImplementedError("The nodes are only drawn for a scalar problem")
     comm = approach.mesh.comm
     assert root < comm.size, f"Cannot gather on process {root} of {comm.size}"
     pieces = comm.gather(create_grids(approach), root=root)
@@ -251,9 +256,11 @@ def _degree_grid(degrees: DegreeField, root: int) -> pyvista.UnstructuredGrid | 
 
 def _function_grid(u: dolfinx.fem.Function, root: int) -> pyvista.UnstructuredGrid | None:
     """The function on the owned cells, gathered on ``root`` (collective)."""
-    # The owned cells, with the degrees of freedom on the process as points
+    # The owned cells, with the degrees of freedom on the process as points. A vector is shown by
+    # its magnitude.
     grid = pyvista.UnstructuredGrid(*dolfinx.plot.vtk_mesh(u.function_space))
-    grid.point_data["u"] = u.x.array.real
+    values = u.x.array.real.reshape(grid.n_points, -1)
+    grid.point_data["u"] = values[:, 0] if values.shape[1] == 1 else np.linalg.norm(values, axis=1)
     merged = _gather(u.function_space.mesh, grid, root)
     return None if merged is None else merged.tessellate()
 
@@ -409,6 +416,7 @@ def plot_iteration(
     *,
     origin: tuple[float, float, float] | None = None,
     histogram: bool | None = None,
+    field: str | None = None,
     title: str | None = None,
 ) -> pyvista.Plotter | None:
     """Plot the solution (left) and the degrees (right) side by side, e.g. to write a frame of an
@@ -430,17 +438,26 @@ def plot_iteration(
         origin: The point the slices pass through in 3D (default: the centre of the domain).
         histogram: Show the number of cells of each degree as a bar chart instead of the mesh.
             Defaults to a bar chart in 3D, where the cells inside the domain are hidden.
+        field: The field of the solution to plot (by default the first). A vector is shown by its
+            magnitude.
         title: Text in the upper left corner.
     """
     mesh = approach.mesh
+    fields = {f.name: f for f in approach.problem.fields}
+    field = field or next(iter(fields))
     degrees = approach.degrees
     gdim = mesh.geometry.dim
     histogram = gdim == 3 if histogram is None else histogram
     element = basix.ufl.element(
-        "DG", mesh.basix_cell(), degrees.pmax, basix.LagrangeVariant.equispaced
+        "DG",
+        mesh.basix_cell(),
+        max(fields[field].degree(degrees.pmax), 1),
+        basix.LagrangeVariant.equispaced,
+        shape=fields[field].shape,
     )
-    u = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, element), name="u_h")
-    approach.interpolate_solution(u)
+    name = f"{field}_h" if fields[field].shape == () else f"|{field}_h|"
+    u = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, element), name=name)
+    approach.interpolate_solution(u, field)
     function_grid = _function_grid(u, root)
     if histogram:
         counts = degree_histogram(degrees)
@@ -505,6 +522,72 @@ def _style_axes(ax):
     ax.tick_params(colors=TEXT_COLOR)
     for spine in ax.spines.values():
         spine.set_color("#c3c2b7")
+
+
+class Animation:
+    """A GIF of the adaptive loop, with the solution and the degrees at each iteration (see
+    :func:`plot_iteration`). It is a callback of
+    :func:`dolfinx_padapt.adaptivity.solve_adaptive`, which also prints the progress::
+
+        with Animation(mesh.comm, "solution.gif") as animation:
+            solve_adaptive(approach, callback=animation)
+
+    Note:
+        Collective. The plotter only exists on ``root``.
+
+    Args:
+        comm: The communicator of the mesh.
+        filename: The GIF file.
+        root: Process gathering the grids and plotting.
+        fps: Frames (iterations) per second.
+        window_size: Size of each frame in pixels.
+        verbose: Print the result of each iteration
+            (:func:`dolfinx_padapt.postprocessing.print_iteration`).
+        kwargs: Keyword arguments to :func:`plot_iteration`.
+    """
+
+    def __init__(
+        self,
+        comm: MPI.Comm,
+        filename: str,
+        root: int = 0,
+        *,
+        fps: int = 1,
+        window_size: tuple[int, int] = (1400, 600),
+        verbose: bool = True,
+        **kwargs,
+    ):
+        self.root = root
+        self.verbose = verbose
+        self.kwargs = kwargs
+        self.plotter = None
+        if comm.rank == root:
+            self.plotter = pyvista.Plotter(
+                shape=(1, 2), border=False, window_size=list(window_size)
+            )
+            self.plotter.open_gif(filename, fps=fps)
+        if verbose:
+            print_header()
+
+    def __call__(self, approach: Approach, result: IterationResult):
+        if self.verbose:
+            print_iteration(approach, result)
+        plotter = plot_iteration(
+            approach, self.plotter, self.root, title=f"Iteration {result.iteration}", **self.kwargs
+        )
+        if plotter is not None:
+            plotter.write_frame()
+
+    def close(self):
+        if self.plotter is not None:
+            self.plotter.close()
+            self.plotter = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
 
 
 def plot_convergence(

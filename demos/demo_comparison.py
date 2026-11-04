@@ -36,14 +36,14 @@ from dolfinx_padapt.forms import Parameters
 from dolfinx_padapt.plotting import plot_convergence
 from dolfinx_padapt.postprocessing import print_summary
 
-mesh = create_pacman(MPI.COMM_WORLD, h=0.1, h_corner=0.005)
+mesh = create_pacman(MPI.COMM_WORLD, h=0.3, h_corner=0.01)
 params = Parameters(pmin=1, pmax=6, penalty="global")
 
 histories = {}
 for name, Approach in APPROACHES.items():
     degrees = DegreeField(mesh, params.pmin, params.pmax)
     approach = Approach(degrees, params)
-    histories[name] = solve_adaptive(approach, max_iterations=12)
+    histories[name] = solve_adaptive(approach, max_iterations=15)
 # -
 
 # The summary shows the number of iterations, the final number of degrees of freedom and error, and

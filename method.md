@@ -1,24 +1,27 @@
 # The method
 
 ## Model problems
-The operator is always $-\Delta$, while the source term $s(u)$ and the Dirichlet data $g$ are given
-by a problem:
+A problem ({py:class}`dolfinx_padapt.problems.Problem`) has one or more fields, each with a value
+shape and a degree relative to the degree of the cell. It provides the residual on the cells and
+boundary of one degree, the coupling terms on the interfaces between two degrees, the error
+indicator and the error measures. The library has the following problems:
 
-$$
-\begin{align}
--\Delta u &= s(u) && \text{in } \Omega,\\
-u &= g && \text{on } \partial\Omega.
-\end{align}
-$$
-
-- {py:class}`dolfinx_padapt.problems.EigenvalueProblem`: $s(u)=\lambda u$ and $g=0$. The default
-  domain is the PacMan domain of the
+- {py:class}`dolfinx_padapt.problems.EigenvalueProblem`: $-\Delta u = \lambda u$, $u=0$ on
+  $\partial\Omega$. The default domain is the PacMan domain of the
   [adaptive mesh refinement demo](https://jorgensd.github.io/dolfinx-tutorial/chapter2/amr.html)
   of the DOLFINx tutorial, with the first eigenvalue $\lambda = j_{2/3,1}^2 \approx 11.3947$.
   The eigenfunction behaves like $r^{2/3}$ at the re-entrant corner, so the mesh is graded
   towards it.
-- {py:class}`dolfinx_padapt.problems.PoissonProblem`: $s(u)=f=-\Delta u_{ex}$ and $g=u_{ex}$ for a
-  manufactured solution $u_{ex}$, such that the error can be measured.
+- {py:class}`dolfinx_padapt.problems.PoissonProblem`: $-\Delta u = f$, $u = g$ on $\partial\Omega$.
+- {py:class}`dolfinx_padapt.problems.ElasticityProblem`: $-\nabla\cdot\sigma(u) = f$, $u = g$ on
+  $\partial\Omega$, for a vector valued displacement.
+- {py:class}`dolfinx_padapt.problems.StokesProblem`: $-\nu\Delta u + \nabla p = f$,
+  $\nabla\cdot u = 0$, $u = g$ on $\partial\Omega$, with a velocity of the degree of the cell and
+  a pressure of one degree less {cite}`method-schotzau2002`.
+
+The source problems use a manufactured solution $u_{ex}$, with $f$ and $g$ computed from it, such
+that the error can be measured. The problems with vector valued or several fields are only
+implemented for the submesh approach.
 
 ## Discretisation
 Discontinuous Galerkin spaces are coupled with the symmetric interior penalty (SIPG) method
@@ -26,7 +29,7 @@ Discontinuous Galerkin spaces are coupled with the symmetric interior penalty (S
 Nitsche's method {cite}`method-nitsche1971`.
 Continuous spaces are only coupled by these terms on the interfaces between cells of different
 degrees.
-The residual is written once, with the boundary terms in $u - g$,
+For the Laplacian, the residual is written once, with the boundary terms in $u - g$,
 
 $$
 \begin{align}
@@ -41,6 +44,9 @@ $$
 where $[u] = u^+n^+ + u^-n^-$ and $\{\nabla u\}=\frac{1}{2}(\nabla u^+ + \nabla u^-)$.
 The stiffness matrix and the load vector are extracted with {py:func}`ufl.lhs` and
 {py:func}`ufl.rhs`. The eigenvalue problem has $g=0$ and the mass matrix as its right hand side.
+For linear elasticity, the stress replaces the gradient, and for the Stokes equations the
+velocity and pressure are also coupled through $\{p\}[v\cdot n]$ on the facets. The building
+blocks are in {py:mod}`dolfinx_padapt.dg`.
 
 The penalty parameter is $\sigma = \alpha p^2$ {cite}`method-epshteyn2007`, where $p$ is
 $\max(p^+, p^-)$ on an interior facet and the degree of the cell on the boundary

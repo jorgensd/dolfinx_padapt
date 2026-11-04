@@ -58,14 +58,13 @@ from petsc4py import PETSc
 
 import dolfinx
 import numpy as np
-import pyvista
 import ufl
 
 from dolfinx_padapt import DegreeField, PoissonProblem
 from dolfinx_padapt.adaptivity import solve_adaptive
 from dolfinx_padapt.approaches import SubmeshApproach
 from dolfinx_padapt.forms import Parameters
-from dolfinx_padapt.plotting import plot_convergence, plot_history, plot_iteration
+from dolfinx_padapt.plotting import Animation, plot_convergence, plot_history
 from dolfinx_padapt.postprocessing import print_header, print_iteration
 
 mesh = dolfinx.mesh.create_unit_cube(MPI.COMM_WORLD, 6, 6, 6)
@@ -101,31 +100,13 @@ PETSc.Sys.Print(f"Number of cells: {num_cells}")
 # an argument. We track the progress in a GIF: the solution on three slices through the centre of
 # the bump (left), and the number of cells of each degree (right).
 
-# +
 params = Parameters(pmin=1, pmax=4)
 degrees = DegreeField(mesh, params.pmin, params.pmax)
 approach = SubmeshApproach(degrees, params, problem)
 
-plotter = None
-if mesh.comm.rank == 0:
-    plotter = pyvista.Plotter(shape=(1, 2), border=False, window_size=[1400, 600])
-    plotter.open_gif("poisson.gif", fps=1)
-
-
-def write_frame(approach, result):
-    print_iteration(approach, result)
-    p = plot_iteration(
-        approach, plotter, origin=(0.3, 0.4, 0.6), title=f"Iteration {result.iteration}"
-    )
-    if p is not None:
-        p.write_frame()
-
-
 # + tags=["scroll-output"]
-print_header()
-history = solve_adaptive(approach, max_iterations=12, tol=1e-3, callback=write_frame)
-if plotter is not None:
-    plotter.close()
+with Animation(mesh.comm, "poisson.gif", origin=(0.3, 0.4, 0.6)) as animation:
+    history = solve_adaptive(approach, max_iterations=12, tol=1e-3, callback=animation)
 # -
 
 # <img src="./poisson.gif" alt="gif" class="bg-primary mb-1" width="100%">

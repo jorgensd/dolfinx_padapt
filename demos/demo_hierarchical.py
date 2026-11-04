@@ -34,14 +34,12 @@ from petsc4py import PETSc
 
 import basix
 import numpy as np
-import pyvista
 
 from dolfinx_padapt import DegreeField, create_pacman
 from dolfinx_padapt.adaptivity import solve_adaptive
 from dolfinx_padapt.approaches import HierarchicalApproach
 from dolfinx_padapt.forms import Parameters
-from dolfinx_padapt.plotting import plot_iteration
-from dolfinx_padapt.postprocessing import print_header, print_iteration
+from dolfinx_padapt.plotting import Animation
 
 points = basix.create_lattice(basix.CellType.triangle, 8, basix.LatticeType.equispaced, True)
 for k in range(1, 5):
@@ -74,30 +72,14 @@ for k in range(1, 5):
 # stable for every distribution of degrees. Then the matrices of degree $p_{max}$ are only
 # assembled **once**, and every iteration only extracts sub-matrices.
 
-# +
-mesh = create_pacman(MPI.COMM_WORLD, h=0.1, h_corner=0.005)
+mesh = create_pacman(MPI.COMM_WORLD, h=0.3, h_corner=0.01)
 params = Parameters(pmin=1, pmax=6, penalty="global")
 degrees = DegreeField(mesh, params.pmin, params.pmax)
 approach = HierarchicalApproach(degrees, params)
 
-plotter = None
-if mesh.comm.rank == 0:
-    plotter = pyvista.Plotter(shape=(1, 2), border=False, window_size=[1400, 600])
-    plotter.open_gif("hierarchical.gif", fps=1)
-
-
-def write_frame(approach, result):
-    print_iteration(approach, result)
-    p = plot_iteration(approach, plotter, title=f"Iteration {result.iteration}")
-    if p is not None:
-        p.write_frame()
-
-
 # + tags=["scroll-output"]
-print_header()
-history = solve_adaptive(approach, max_iterations=12, callback=write_frame)
-if plotter is not None:
-    plotter.close()
+with Animation(mesh.comm, "hierarchical.gif") as animation:
+    history = solve_adaptive(approach, max_iterations=15, callback=animation)
 # -
 
 # <img src="./hierarchical.gif" alt="gif" class="bg-primary mb-1" width="100%">

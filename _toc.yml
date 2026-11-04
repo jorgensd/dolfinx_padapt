@@ -16,6 +16,8 @@ parts:
       - file: demos/demo_continuous
       - file: demos/demo_comparison
       - file: demos/demo_poisson
+      - file: demos/demo_elasticity
+      - file: demos/demo_stokes
   - caption: Reference
     chapters:
       - file: api

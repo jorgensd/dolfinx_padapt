@@ -47,16 +47,14 @@ from mpi4py import MPI
 from petsc4py import PETSc
 
 import numpy as np
-import pyvista
 
 from dolfinx_padapt import DegreeField, EigenvalueProblem, create_pacman
 from dolfinx_padapt.adaptivity import mark_cells, solve_adaptive
 from dolfinx_padapt.approaches import SubmeshApproach
 from dolfinx_padapt.forms import Parameters
-from dolfinx_padapt.plotting import plot_convergence, plot_iteration
-from dolfinx_padapt.postprocessing import print_header, print_iteration
+from dolfinx_padapt.plotting import Animation, plot_convergence
 
-mesh = create_pacman(MPI.COMM_WORLD, h=0.1, h_corner=0.005)
+mesh = create_pacman(MPI.COMM_WORLD, h=0.3, h_corner=0.01)
 num_cells = mesh.topology.index_map(mesh.topology.dim).size_global
 PETSc.Sys.Print(f"Number of cells: {num_cells}, geometry order: {mesh.geometry.cmaps[0].degree}")
 # -
@@ -149,27 +147,11 @@ PETSc.Sys.Print(f"Marked {num_marked} of {num_cells} cells")
 # We reset the degrees, and run the full adaptive loop. We track the solution and the degrees in
 # a GIF, with the solution on the left and the degree of each cell on the right.
 
-# +
 degrees.set_degrees(np.full(degrees.num_owned_cells, params.pmin, dtype=np.int32))
 
-plotter = None
-if mesh.comm.rank == 0:
-    plotter = pyvista.Plotter(shape=(1, 2), border=False, window_size=[1400, 600])
-    plotter.open_gif("submesh.gif", fps=1)
-
-
-def write_frame(approach, result):
-    print_iteration(approach, result)
-    p = plot_iteration(approach, plotter, title=f"Iteration {result.iteration}")
-    if p is not None:
-        p.write_frame()
-
-
 # + tags=["scroll-output"]
-print_header()
-history = solve_adaptive(approach, theta=0.5, max_iterations=12, tol=1e-8, callback=write_frame)
-if plotter is not None:
-    plotter.close()
+with Animation(mesh.comm, "submesh.gif") as animation:
+    history = solve_adaptive(approach, max_iterations=15, callback=animation)
 # -
 
 # <img src="./submesh.gif" alt="gif" class="bg-primary mb-1" width="100%">

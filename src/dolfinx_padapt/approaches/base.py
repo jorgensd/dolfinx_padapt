@@ -239,11 +239,12 @@ class BlockApproach(Approach):
             return None
         assert self.A is not None
         vector = self.A.createVecRight()
-        values = vector.array
+        values = np.zeros(vector.getLocalSize(), dtype=dolfinx.default_scalar_type)
         start = 0
         for (_, name), n in zip(self.blocks, self._block_sizes()):
             values[start : start + n] = 1.0 if name in self.problem.nullspace_fields else 0.0
             start += n
+        vector.setArray(values)
         vector.normalize()
         return PETSc.NullSpace().create(vectors=[vector], comm=self.mesh.comm)
 

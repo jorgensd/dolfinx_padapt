@@ -26,16 +26,14 @@ from petsc4py import PETSc
 
 import dolfinx
 import numpy as np
-import pyvista
 
 from dolfinx_padapt import DegreeField, create_pacman
 from dolfinx_padapt.adaptivity import solve_adaptive
 from dolfinx_padapt.approaches import RestrictedApproach, restrict_function_space
 from dolfinx_padapt.forms import Parameters
-from dolfinx_padapt.plotting import plot_iteration
-from dolfinx_padapt.postprocessing import print_header, print_iteration
+from dolfinx_padapt.plotting import Animation
 
-mesh = create_pacman(MPI.COMM_WORLD, h=0.1, h_corner=0.005)
+mesh = create_pacman(MPI.COMM_WORLD, h=0.3, h_corner=0.01)
 params = Parameters(pmin=1, pmax=6)
 degrees = DegreeField(mesh, params.pmin, params.pmax)
 # -
@@ -88,28 +86,12 @@ PETSc.Sys.Print(f"Cells of degree 1: {num_outside}, next to a cell of degree 2: 
 # The forms of every block $(i, j)$ are compiled once. Every iteration restricts the parent spaces
 # to the current degrees, and creates the forms with these spaces.
 
-# +
 degrees.set_degrees(np.full(degrees.num_owned_cells, params.pmin, dtype=np.int32))
 approach = RestrictedApproach(degrees, params)
 
-plotter = None
-if mesh.comm.rank == 0:
-    plotter = pyvista.Plotter(shape=(1, 2), border=False, window_size=[1400, 600])
-    plotter.open_gif("restricted.gif", fps=1)
-
-
-def write_frame(approach, result):
-    print_iteration(approach, result)
-    p = plot_iteration(approach, plotter, title=f"Iteration {result.iteration}")
-    if p is not None:
-        p.write_frame()
-
-
 # + tags=["scroll-output"]
-print_header()
-history = solve_adaptive(approach, max_iterations=12, callback=write_frame)
-if plotter is not None:
-    plotter.close()
+with Animation(mesh.comm, "restricted.gif") as animation:
+    history = solve_adaptive(approach, max_iterations=15, callback=animation)
 # -
 
 # <img src="./restricted.gif" alt="gif" class="bg-primary mb-1" width="100%">

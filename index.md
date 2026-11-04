@@ -26,7 +26,9 @@ The main model problem is the Laplace eigenvalue problem on the PacMan domain of
 [adaptive mesh refinement demo](https://jorgensd.github.io/dolfinx-tutorial/chapter2/amr.html)
 of the DOLFINx tutorial. Instead of refining the mesh, which has second order geometry and is
 generated with GMSH, we increase the degree of the cells with the largest error.
-The [Poisson demo](demos/demo_poisson) uses the library for a source problem in 3D.
+The library also solves the Poisson equation (in 2D and 3D), linear elasticity and the Stokes
+equations, see the [Poisson](demos/demo_poisson), [elasticity](demos/demo_elasticity) and
+[Stokes](demos/demo_stokes) demos.
 
 - [Getting started](installation): installation, and running the demos and the tests.
 - [The method](method): the adaptive loop, the discretisation and the error indicator.

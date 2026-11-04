@@ -86,7 +86,7 @@ jobs:
         id: deps
         run: |
           echo "jupyter-book<2.0" > "$PIP_CONSTRAINT"
-          python3 -m pip install -U pip setuptools pkgconfig "scikit-build-core[pyproject]" nanobind
+          python3 -m pip install -U pip setuptools pkgconfig scikit-build-core nanobind
           python3 -m pip install --no-build-isolation .[docs]
 
       - name: Build the book

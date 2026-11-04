@@ -1,0 +1,21 @@
+format: jb-book
+root: index
+parts:
+  - caption: Getting started
+    chapters:
+      - file: installation
+  - caption: Background
+    chapters:
+      - file: method
+      - file: approaches
+  - caption: Demos
+    chapters:
+      - file: demos/demo_submesh
+      - file: demos/demo_restricted
+      - file: demos/demo_hierarchical
+      - file: demos/demo_continuous
+      - file: demos/demo_comparison
+      - file: demos/demo_poisson
+  - caption: Reference
+    chapters:
+      - file: api

@@ -1,0 +1,76 @@
+name: Test against DOLFINx nightly build
+
+on:
+  pull_request:
+    branches:
+      - main
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        description: "Commit to test, if not the one the caller runs for"
+        type: string
+        default: ""
+      skip-book:
+        description: "Skip building the book, when the caller builds it"
+        type: boolean
+        default: false
+  schedule:
+    - cron: "0 9 * * *"
+
+jobs:
+  test-nightly:
+    runs-on: ubuntu-latest
+    container: ghcr.io/fenics/dolfinx/lab:nightly
+
+    env:
+      PYVISTA_OFF_SCREEN: true
+      PYVISTA_JUPYTER_BACKEND: html
+      LIBGL_ALWAYS_SOFTWARE: 1
+      PIP_BREAK_SYSTEM_PACKAGES: 1
+      OMPI_ALLOW_RUN_AS_ROOT: 1
+      OMPI_ALLOW_RUN_AS_ROOT_CONFIRM: 1
+      PRTE_MCA_rmaps_default_mapping_policy: :oversubscribe
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Special handling of some installation
+        uses: ./.github/actions/install-dependencies
+
+      # scifem has a C++ extension, which is built against the DOLFINx of the image
+      - name: Install requirements
+        run: |
+          python3 -m pip install -U pip setuptools pkgconfig "scikit-build-core[pyproject]" nanobind
+          python3 -m pip install --no-build-isolation --no-cache-dir .[docs,test] --upgrade
+
+      - name: Test building the book
+        if: ${{ !inputs.skip-book }}
+        run: PYVISTA_OFF_SCREEN=false jupyter-book build .
+
+      - name: Run tests
+        run: |
+          python3 -m pytest tests
+          mpirun -n 2 python3 -m pytest tests
+
+      - name: Run demos
+        working-directory: demos
+        run: |
+          mpirun -n 2 python3 demo_submesh.py
+          mpirun -n 2 python3 demo_restricted.py
+          mpirun -n 2 python3 demo_hierarchical.py
+          mpirun -n 2 python3 demo_continuous.py
+          mpirun -n 2 python3 demo_comparison.py
+          mpirun -n 2 python3 demo_poisson.py
+
+      - uses: actions/upload-artifact@v7
+        if: ${{ always() && !inputs.skip-book }}
+        with:
+          name: webpage
+          path: ./_build/html
+          retention-days: 2
+          if-no-files-found: error

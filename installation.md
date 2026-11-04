@@ -1,0 +1,53 @@
+# Getting started
+
+## Installation
+`dolfinx_padapt` requires DOLFINx (the main branch, which will become v0.12) and
+[scifem](https://github.com/scientificcomputing/scifem) (>= 0.27). Both have C++ extensions, so
+they are built against the installed DOLFINx without build isolation:
+
+```bash
+python3 -m pip install --no-build-isolation .
+```
+
+The optional dependencies are `plot` (PyVista and Matplotlib, used by the demos), `docs` (to build
+this book) and `test`:
+
+```bash
+python3 -m pip install --no-build-isolation .[docs,test]
+```
+
+The [DOLFINx docker images](https://github.com/FEniCS/dolfinx/pkgs/container/dolfinx%2Flab), e.g.
+`ghcr.io/fenics/dolfinx/lab:nightly`, have all other requirements installed.
+
+## Running the demos
+The demos are Python files in the `demos` folder, which can be run in serial or in parallel:
+
+```bash
+cd demos
+python3 demo_submesh.py
+mpirun -n 4 python3 demo_poisson.py
+```
+
+They are [jupytext](https://jupytext.readthedocs.io) files paired with notebooks. After changing a
+demo, update its notebook with
+
+```bash
+jupytext --sync demos/*.py
+```
+
+## Testing
+The tests check that the three approaches agree with each other and with standard DOLFINx forms on
+a single space, in serial and in parallel:
+
+```bash
+python3 -m pytest tests
+mpirun -n 3 python3 -m pytest tests
+```
+
+## Building the documentation
+This book is built with [Jupyter Book](https://jupyterbook.org) (version 1), which executes the
+demos:
+
+```bash
+jupyter-book build .
+```

@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=77.0.3"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dolfinx-padapt"
+version = "0.12.0.dev0"
+description = "P-adaptive DG/CG methods in DOLFINx: hierarchical, restricted-dofmap and submesh approaches"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+authors = [{ email = "dokken@simula.no", name = "Jørgen S. Dokken" }]
+dependencies = ["fenics-dolfinx>=0.12.0.dev0,<0.13.0", "scifem>=0.27", "gmsh", "slepc4py"]
+
+[project.optional-dependencies]
+plot = ["pyvista>=0.45.0", "matplotlib", "imageio"]
+docs = ["dolfinx-padapt[plot]", "jupyter-book<2.0", "jupytext", "sphinx-codeautolink"]
+test = ["pytest"]
+dev = ["ruff", "pre-commit"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.jupytext]
+formats = "ipynb,py:light"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+indent-width = 4
+
+[tool.ruff.format]
+# The scripts are kept identical to those of the DOLFINx tutorial
+exclude = [".github/*"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["dolfinx_padapt"]
+known-third-party = ["basix", "dolfinx", "ffcx", "ufl", "gmsh", "numpy", "pytest", "scifem"]
+section-order = ["future", "standard-library", "mpi", "third-party", "first-party", "local-folder"]
+
+[tool.ruff.lint.isort.sections]
+"mpi" = ["mpi4py", "petsc4py", "slepc4py"]
+
+[tool.ruff.lint.per-file-ignores]
+# Display math in the markdown cells of the demos cannot be wrapped
+"demos/*" = ["E501"]
+# Kept identical to the scripts of the DOLFINx tutorial, run with Python >= 3.11 (tomllib)
+".github/*" = ["I001"]

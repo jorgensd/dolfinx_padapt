@@ -1,0 +1,124 @@
+name: Test stable release
+
+# Runs the tests and demos in the DOLFINx image of a release. The deploy workflow uses this
+# to test each release it builds before publishing it, and it uploads a mark of whether the tests
+# passed. On a pull request (or by hand) it tests the code in the image of the newest release, as
+# listed by .github/docs-versions.toml, to show whether it works in the newest DOLFINx release.
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        description: "Commit to test"
+        type: string
+        required: true
+      image:
+        description: "DOLFINx image to test in"
+        type: string
+        required: true
+      asset:
+        description: "Tarball of the HTML of the commit, named in the mark of whether the tests passed"
+        type: string
+        default: ""
+
+jobs:
+  latest:
+    if: ${{ !inputs.image }}
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.latest.outputs.image }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Find the newest release
+        id: latest
+        run: python3 .github/scripts/docs_site.py latest
+
+  test:
+    needs: latest
+    if: ${{ !cancelled() && (inputs.image || needs.latest.result == 'success') }}
+    runs-on: ubuntu-latest
+    container: ${{ inputs.image || needs.latest.outputs.image }}
+    env:
+      DEB_PYTHON_INSTALL_LAYOUT: deb_system
+      PYVISTA_OFF_SCREEN: true
+      PYVISTA_JUPYTER_BACKEND: html
+      LIBGL_ALWAYS_SOFTWARE: 1
+      PIP_BREAK_SYSTEM_PACKAGES: 1
+      OMPI_ALLOW_RUN_AS_ROOT: 1
+      OMPI_ALLOW_RUN_AS_ROOT_CONFIRM: 1
+      PRTE_MCA_rmaps_default_mapping_policy: :oversubscribe
+      ASSET: ${{ inputs.asset }}
+
+    defaults:
+      run:
+        working-directory: checkout
+
+    steps:
+      # The install action comes from the commit of this workflow, as older tags may not have it
+      - uses: actions/checkout@v7
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          path: checkout
+
+      - id: install
+        uses: ./.github/actions/install-dependencies
+
+      # scifem has a C++ extension, which is built against the DOLFINx of the image
+      - name: Install requirements
+        run: |
+          python3 -m pip install -U pip setuptools pkgconfig "scikit-build-core[pyproject]" nanobind
+          python3 -m pip install --no-build-isolation .[docs,test]
+
+      - name: Run tests
+        run: |
+          python3 -m pytest tests
+          mpirun -n 2 python3 -m pytest tests
+
+      - name: Run demos
+        working-directory: checkout/demos
+        run: |
+          mpirun -n 2 python3 demo_submesh.py
+          mpirun -n 2 python3 demo_restricted.py
+          mpirun -n 2 python3 demo_hierarchical.py
+          mpirun -n 2 python3 demo_continuous.py
+          mpirun -n 2 python3 demo_comparison.py
+          mpirun -n 2 python3 demo_poisson.py
+
+      - name: Mark the tests as passed
+        id: passed
+        if: ${{ inputs.asset }}
+        working-directory: .
+        run: echo "${ASSET%.tar.gz}" > "${ASSET%.tar.gz}.tested"
+
+      - uses: actions/upload-artifact@v7
+        if: ${{ inputs.asset }}
+        with:
+          name: tested-${{ inputs.asset }}
+          path: "*.tested"
+          retention-days: 2
+          if-no-files-found: error
+
+      # So that the deploy workflow doesn't build it again until the mark is deleted. A failure
+      # before the tests could run, such as of a checkout, is more likely to be passing.
+      - name: Mark the tests as failed
+        id: failed
+        if: ${{ failure() && inputs.asset && steps.install.outcome == 'success' && steps.passed.outcome != 'success' }}
+        working-directory: .
+        env:
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          WHAT: ${{ inputs.ref }} in ${{ inputs.image }}
+        run: |
+          echo "Tests of ${WHAT} failed: ${RUN}" > "${ASSET%.tar.gz}.failed"
+
+      - uses: actions/upload-artifact@v7
+        if: ${{ failure() && steps.failed.outcome == 'success' }}
+        with:
+          name: failed-test-${{ inputs.asset }}
+          path: "*.failed"
+          retention-days: 2

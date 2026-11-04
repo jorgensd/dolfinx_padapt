@@ -1,0 +1,81 @@
+# Book settings
+# Learn more at https://jupyterbook.org/customize/config.html
+
+title: P-adaptivity in DOLFINx
+author: Jørgen S. Dokken
+
+# Re-execute notebooks whose code changed
+# See https://jupyterbook.org/content/execute.html
+execute:
+  execute_notebooks: cache
+
+  # Set timeout for any example to 30 minutes
+  timeout: 1800
+
+# Information about where the book exists on the web
+repository:
+  url: https://github.com/jorgensd/dolfinx-padapt # Online location of your book
+  path_to_book: . # Optional path to your book, relative to the repository root
+  branch: main # Which branch of the repository should be used when creating links (optional)
+
+# Add a bibtex file so that we can create citations
+bibtex_bibfiles:
+  - references.bib
+
+sphinx:
+  config:
+    html_last_updated_fmt: "%b %d, %Y"
+    suppress_warnings: ["mystnb.unknown_mime_type"]
+
+    html_theme_options:
+      # pydata-sphinx-theme puts a search button in a top navbar unless this is
+      # set; sphinx-book-theme >= 1.3 no longer hides it, giving two search bars
+      navbar_persistent: []
+    codeautolink_concat_default: True
+    autodoc_member_order: "bysource"
+    autodoc_typehints: "description"
+    intersphinx_mapping:
+      basix: ["https://docs.fenicsproject.org/basix/main/python/", null]
+      ffcx: ["https://docs.fenicsproject.org/ffcx/main/", null]
+      ufl: ["https://docs.fenicsproject.org/ufl/main/", null]
+      dolfinx: ["https://docs.fenicsproject.org/dolfinx/main/python", null]
+      petsc4py: ["https://petsc.org/release/petsc4py", null]
+      mpi4py: ["https://mpi4py.readthedocs.io/en/stable", null]
+      numpy: ["https://numpy.org/doc/stable/", null]
+      pyvista: ["https://docs.pyvista.org/", null]
+      scifem: ["https://scientificcomputing.github.io/scifem/", null]
+      matplotlib: ["https://matplotlib.org/stable/", null]
+
+  extra_extensions:
+    - "sphinx.ext.autodoc"
+    - "sphinx.ext.napoleon"
+    - "sphinx.ext.intersphinx"
+    - "sphinx_codeautolink"
+
+parse:
+  myst_enable_extensions:
+    - "amsmath"
+    - "colon_fence"
+    - "deflist"
+    - "dollarmath"
+    - "html_admonition"
+    - "html_image"
+    - "linkify"
+    - "replacements"
+    - "smartquotes"
+    - "substitution"
+
+# Add GitHub buttons to your book
+# See https://jupyterbook.org/customize/config.html#add-a-link-to-your-repository
+html:
+  use_issues_button: true
+  use_repository_button: true
+  use_edit_page_button: true
+
+  extra_footer: |
+    <div>
+        The code is distributed under the terms of the <a href=https://opensource.org/license/mit>MIT License</a>.
+    </div>
+
+exclude_patterns: [README.md, .pytest_cache]
+only_build_toc_files: true

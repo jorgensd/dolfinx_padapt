@@ -1,18 +1,8 @@
-# ---
-# jupyter:
-#   jupytext:
-#     cell_metadata_filter: tags,-all
-#     formats: ipynb,py:light
-#     text_representation:
-#       extension: .py
-#       format_name: light
-#       format_version: '1.5'
-#       jupytext_version: 1.19.1
-# ---
-
 # # Comparison of the approaches
 #
 # Author: Jørgen S. Dokken
+#
+# SPDX-License-Identifier: MIT
 #
 # We run the three representations of a space with a cell-wise degree on the same problem:
 #

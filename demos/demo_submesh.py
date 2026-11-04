@@ -1,18 +1,8 @@
-# ---
-# jupyter:
-#   jupytext:
-#     cell_metadata_filter: tags,-all
-#     formats: ipynb,py:light
-#     text_representation:
-#       extension: .py
-#       format_name: light
-#       format_version: '1.5'
-#       jupytext_version: 1.19.1
-# ---
-
 # # One submesh per degree
 #
 # Author: Jørgen S. Dokken
+#
+# SPDX-License-Identifier: MIT
 #
 # In this demo, we solve the Laplace eigenvalue problem on the PacMan domain from the
 # [adaptive mesh refinement demo](https://jorgensd.github.io/dolfinx-tutorial/chapter2/amr.html)
@@ -109,7 +99,7 @@ approach.update()
 for i, (submesh, _) in approach.submeshes.items():
     n = submesh.topology.index_map(submesh.topology.dim).size_global
     PETSc.Sys.Print(
-        f"Degree {i}: {n} cells, {approach.spaces[i].dofmap.index_map.size_global} dofs"
+        f"Degree {i}: {n} cells, {approach.spaces[(i, 'u')].dofmap.index_map.size_global} dofs"
     )
 
 # We assemble the blocked matrices and solve the eigenvalue problem with SLEPc, using a

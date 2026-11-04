@@ -1,18 +1,8 @@
-# ---
-# jupyter:
-#   jupytext:
-#     cell_metadata_filter: tags,-all
-#     formats: ipynb,py:light
-#     text_representation:
-#       extension: .py
-#       format_name: light
-#       format_version: '1.5'
-#       jupytext_version: 1.19.1
-# ---
-
 # # Continuous Galerkin with Nitsche coupling
 #
 # Author: Jørgen S. Dokken
+#
+# SPDX-License-Identifier: MIT
 #
 # In the previous demos, the space is discontinuous on every facet. Here we use *continuous*
 # Lagrange elements in the region $\Omega_i$ of each degree $i$, and couple the regions weakly

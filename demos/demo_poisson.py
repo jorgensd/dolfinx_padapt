@@ -1,18 +1,8 @@
-# ---
-# jupyter:
-#   jupytext:
-#     cell_metadata_filter: tags,-all
-#     formats: ipynb,py:light
-#     text_representation:
-#       extension: .py
-#       format_name: light
-#       format_version: '1.5'
-#       jupytext_version: 1.19.1
-# ---
-
 # # The Poisson equation in 3D
 #
 # Author: Jørgen S. Dokken
+#
+# SPDX-License-Identifier: MIT
 #
 # The previous demos solve an eigenvalue problem. Here, we use the same library for the Poisson
 # equation

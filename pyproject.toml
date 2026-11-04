@@ -22,17 +22,12 @@ dev = ["ruff", "pre-commit"]
 [tool.setuptools.packages.find]
 where = ["src"]
 
-[tool.jupytext]
-formats = "ipynb,py:light"
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100
 indent-width = 4
-# The notebooks are generated from the demos with jupytext
-extend-exclude = ["*.ipynb"]
 
 [tool.ruff.format]
 # The scripts are kept identical to those of the DOLFINx tutorial

@@ -10,14 +10,14 @@ parts:
       - file: approaches
   - caption: Demos
     chapters:
-      - file: demos/demo_submesh
-      - file: demos/demo_restricted
-      - file: demos/demo_hierarchical
-      - file: demos/demo_continuous
-      - file: demos/demo_comparison
-      - file: demos/demo_poisson
-      - file: demos/demo_elasticity
-      - file: demos/demo_stokes
+      - file: demos/demo_submesh.py
+      - file: demos/demo_restricted.py
+      - file: demos/demo_hierarchical.py
+      - file: demos/demo_continuous.py
+      - file: demos/demo_comparison.py
+      - file: demos/demo_poisson.py
+      - file: demos/demo_elasticity.py
+      - file: demos/demo_stokes.py
   - caption: Reference
     chapters:
       - file: api

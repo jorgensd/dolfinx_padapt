@@ -28,11 +28,12 @@ python3 demo_submesh.py
 mpirun -n 4 python3 demo_poisson.py
 ```
 
-They are [jupytext](https://jupytext.readthedocs.io) files paired with notebooks. After changing a
-demo, update its notebook with
+They are [jupytext](https://jupytext.readthedocs.io) scripts in the light format, which the book
+reads directly. They can be opened as notebooks with jupytext, e.g. in JupyterLab, or converted
+with
 
 ```bash
-jupytext --sync demos/*.py
+jupytext --to ipynb demos/demo_submesh.py
 ```
 
 ## Testing

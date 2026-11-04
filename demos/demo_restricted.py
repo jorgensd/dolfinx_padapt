@@ -1,18 +1,8 @@
-# ---
-# jupyter:
-#   jupytext:
-#     cell_metadata_filter: tags,-all
-#     formats: ipynb,py:light
-#     text_representation:
-#       extension: .py
-#       format_name: light
-#       format_version: '1.5'
-#       jupytext_version: 1.19.1
-# ---
-
 # # Restricted dofmaps
 #
 # Author: Jørgen S. Dokken
+#
+# SPDX-License-Identifier: MIT
 #
 # We solve the same Laplace eigenvalue problem as in [the submesh demo](./demo_submesh), but
 # instead of creating a submesh for each degree, we create one function space $V_i$ per degree $i$

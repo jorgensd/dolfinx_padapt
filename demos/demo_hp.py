@@ -124,9 +124,13 @@ if MPI.COMM_WORLD.rank == 0:
 # ![convergence](./hp_convergence.png)
 #
 # With p-refinement, the error stagnates once the cells at the corner have the maximal degree.
-# h-refinement converges algebraically. hp-refinement converges fastest, until the error of the
-# third order geometry of the cells that were never split, and the lack of a one-sided bound on the
-# discrete eigenvalue, show.
+# h-refinement converges algebraically. hp-refinement is slower at first: the corner cells are
+# enriched up to degree three or four before the decay of their Legendre coefficients shows that
+# the solution is not smooth there. Once they are split, the error decreases much faster than with
+# h-refinement, and hp-refinement reaches an error below $10^{-6}$ with a fraction of the degrees of
+# freedom. The error then increases slightly. The discrete eigenvalue is not a one-sided bound
+# with SIPG, and the cells that are never split keep the third order geometry of the initial
+# mesh, whose error is of this size.
 #
 # ```{bibliography}
 #    :filter: cited

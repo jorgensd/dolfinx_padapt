@@ -13,7 +13,12 @@ from dolfinx_padapt import EigenvalueProblem, PoissonProblem, create_pacman
 from dolfinx_padapt.adaptivity import Refinement, solve_adaptive
 from dolfinx_padapt.approaches import APPROACHES, SubmeshApproach
 from dolfinx_padapt.forms import Parameters
-from dolfinx_padapt.mesh import HALF_DISK_CURVED, HALF_DISK_FLAT, create_half_disk
+from dolfinx_padapt.mesh import (
+    HALF_DISK_CURVED,
+    HALF_DISK_FLAT,
+    create_half_disk,
+    pacman_boundary_projection,
+)
 from dolfinx_padapt.refinement import interpolate_from_parent, refine_curved
 from dolfinx_padapt.smoothness import decay_factor
 
@@ -170,3 +175,23 @@ def test_h_adaptive_loop_keeps_degrees(mesh):
     assert all(set(r.degrees) == {2} for r in history)
     assert sum(history[-1].degrees.values()) > sum(history[0].degrees.values())
     assert history[-1].error < history[0].error
+
+
+def test_refine_curved_boundary_projection(mesh):
+    """With a projection, the new boundary nodes are on the unit circle, and the area is closer to
+    the exact area."""
+    refined = refine_curved(mesh, boundary_projection=pacman_boundary_projection)
+    fine = refined.mesh
+    tdim = fine.topology.dim
+    facets = dolfinx.mesh.exterior_facet_indices(fine.topology)
+    nodes = np.unique(dolfinx.mesh.entities_to_geometry(fine, tdim - 1, facets))
+    x = fine.geometry.x[nodes]
+    straight = (np.isclose(x[:, 1], 0) & (x[:, 0] >= 0)) | (np.isclose(x[:, 0], 0) & (x[:, 1] <= 0))
+    assert all_ranks(np.allclose(np.linalg.norm(x[~straight, :2], axis=1), 1.0))
+
+    exact = 3 * np.pi / 4
+    areas = [
+        integrate(1.0 * ufl.dx(domain=m, metadata={"quadrature_degree": QDEG}))
+        for m in (mesh, fine)
+    ]
+    assert abs(areas[1] - exact) < 0.1 * abs(areas[0] - exact)

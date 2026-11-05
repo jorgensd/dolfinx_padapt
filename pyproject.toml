@@ -15,7 +15,7 @@ dependencies = ["fenics-dolfinx>=0.12.0.dev0,<0.13.0", "gmsh", "slepc4py"]
 
 [project.optional-dependencies]
 plot = ["pyvista>=0.45.0", "matplotlib", "imageio"]
-docs = ["dolfinx-padapt[plot]", "jupyter-book<2.0", "jupytext", "sphinx-codeautolink"]
+docs = ["dolfinx-padapt[plot]", "jupyter-book<3.0", "jupytext", "sphinx-codeautolink"]
 test = ["pytest"]
 dev = ["ruff", "pre-commit"]
 

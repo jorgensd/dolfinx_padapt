@@ -133,23 +133,27 @@ class Problem(abc.ABC):
 def solve_linear(A: PETSc.Mat, b: PETSc.Vec, nullspace: PETSc.NullSpace | None = None) -> PETSc.Vec:
     """Solve A x = b with a direct solver (MUMPS), where ``A`` may have a (constant) nullspace."""
     ksp = PETSc.KSP().create(A.getComm())
-    ksp.setOperators(A)
-    ksp.setType("preonly")
-    pc = ksp.getPC()
-    pc.setType("lu")
-    pc.setFactorSolverType("mumps")
-    if nullspace is not None:
-        A.setNullSpace(nullspace)
-        nullspace.remove(b)
-        # Let MUMPS detect the null pivot, and return a solution
-        pc.setFactorSetUpSolverType()
-        pc.getFactorMatrix().setMumpsIcntl(icntl=24, ival=1)
-        pc.getFactorMatrix().setMumpsIcntl(icntl=25, ival=0)
-    x = A.createVecRight()
-    ksp.solve(b, x)
-    reason = ksp.getConvergedReason()
-    ksp.destroy()
-    assert reason > 0, f"Linear solver did not converge ({reason})"
+    try:
+        ksp.setOperators(A)
+        ksp.setType("preonly")
+        pc = ksp.getPC()
+        pc.setType("lu")
+        pc.setFactorSolverType("mumps")
+        if nullspace is not None:
+            A.setNullSpace(nullspace)
+            nullspace.remove(b)
+            # Let MUMPS detect the null pivot, and return a solution
+            pc.setFactorSetUpSolverType()
+            pc.getFactorMatrix().setMumpsIcntl(icntl=24, ival=1)
+            pc.getFactorMatrix().setMumpsIcntl(icntl=25, ival=0)
+        x = A.createVecRight()
+        ksp.solve(b, x)
+        reason = ksp.getConvergedReason()
+    finally:
+        ksp.destroy()
+    if reason <= 0:
+        x.destroy()
+        raise RuntimeError(f"The linear solver did not converge ({reason})")
     if nullspace is not None:
         nullspace.remove(x)
     return x

@@ -17,6 +17,7 @@ from dolfinx.fem import create_form
 from ..degrees import DegreeField
 from ..forms import BlockForms, Parameters, cell_size, compile_block_forms
 from ..problems import Problem
+from ..refinement import BoundaryProjection, RefinedMesh, refine_curved
 
 
 class Approach(abc.ABC):
@@ -24,6 +25,8 @@ class Approach(abc.ABC):
 
     The approach owns the degree of each cell (:attr:`degrees`), which starts at ``params.pmin``
     and stays within ``[params.pmin, params.pmax]``, the degrees the forms are compiled for.
+    It also owns the mesh, which starts as the mesh of the problem, and can be refined
+    (:meth:`refine`). The forms are compiled once, and are also used on the refined meshes.
 
     Args:
         problem: The problem to solve, which defines the mesh.
@@ -36,15 +39,57 @@ class Approach(abc.ABC):
         self._problem = problem
         self._mesh = problem.mesh
         self._params = params
+        self._facet_tags = problem.facet_tags
         self._degrees = DegreeField(self._mesh, params.pmin, params.pmax)
         self._h = cell_size(self._mesh)
+        # The cell size in the compiled forms, replaced by the cell size of the current mesh
+        self._h_template = self._h
         self._A: PETSc.Mat | None = None
         self._B: PETSc.Mat | PETSc.Vec | None = None
 
     @property
     def mesh(self) -> dolfinx.mesh.Mesh:
-        """The mesh."""
+        """The current mesh (the mesh of the problem, or a refinement of it)."""
         return self._mesh
+
+    @property
+    def facet_tags(self) -> dolfinx.mesh.MeshTags | None:
+        """The facet tags of the problem on the current mesh."""
+        return self._facet_tags
+
+    def refine(
+        self,
+        cells: npt.NDArray[np.int32],
+        boundary_projection: BoundaryProjection | None = None,
+    ) -> RefinedMesh:
+        """Refine the mesh (see :func:`dolfinx_padapt.refinement.refine_curved`). The new cells
+        get the degree of their parent cell. Call :meth:`update` before solving.
+
+        Note:
+            Collective.
+
+        Args:
+            cells: The (local) owned cells to refine. Further cells are refined to keep the mesh
+                conforming.
+            boundary_projection: If given, the new nodes on the boundary are moved to the exact
+                boundary with this map (see :func:`dolfinx_padapt.refinement.refine_curved`).
+
+        Returns:
+            The refined mesh and its relation to the previous mesh.
+        """
+        refined = refine_curved(self._mesh, cells, self._facet_tags, boundary_projection)
+        degrees = DegreeField(refined.mesh, self._params.pmin, self._params.pmax)
+        degrees.set_degrees(self._degrees.cell_degrees[refined.parent_cells])
+        self._mesh = refined.mesh
+        self._facet_tags = refined.facet_tags
+        self._degrees = degrees
+        self._h = cell_size(self._mesh)
+        self._replace_system(None, None)
+        self._mesh_changed()
+        return refined
+
+    def _mesh_changed(self):
+        """Rebuild what depends on the mesh, after :meth:`refine`."""
 
     @property
     def params(self) -> Parameters:
@@ -219,7 +264,7 @@ class BlockApproach(Approach):
     def update(self):
         degrees = list(self._params.degrees)
         entities = self._degrees.integration_entities(
-            self._problem.facet_tags, self._problem.boundary_markers
+            self._facet_tags, self._problem.boundary_markers
         )
         self._spaces, self._entity_maps = self._create_spaces(degrees)
         self._nonlinear_problem = None
@@ -229,7 +274,8 @@ class BlockApproach(Approach):
             key: dolfinx.fem.Function(self._spaces[key], name=f"{key[1]}_{key[0]}")
             for key in self._blocks
         }
-        coeffs = {self._h: self._h} | {self._forms.u[key]: self._uh[key] for key in self._blocks}
+        coeffs = {self._h_template: self._h}
+        coeffs |= {self._forms.u[key]: self._uh[key] for key in self._blocks}
         # The previous iterate of a nonlinear problem (zero after every update)
         self._uh_prev = {}
         if self._problem.is_nonlinear:

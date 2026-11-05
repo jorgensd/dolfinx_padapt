@@ -87,6 +87,11 @@ class RestrictedApproach(BlockApproach):
         }
         return self._parent_spaces
 
+    def _mesh_changed(self):
+        self._parent_spaces = {
+            key: dolfinx.fem.functionspace(self._mesh, el) for key, el in self._elements.items()
+        }
+
     def _create_spaces(self, degrees):
         spaces = {}
         for i in degrees:

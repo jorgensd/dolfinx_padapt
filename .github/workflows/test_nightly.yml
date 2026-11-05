@@ -68,6 +68,7 @@ jobs:
           mpirun -n 2 python3 demo_elasticity.py
           mpirun -n 2 python3 demo_stokes.py
           mpirun -n 2 python3 demo_signorini.py
+          mpirun -n 2 python3 demo_hp.py
 
       - uses: actions/upload-artifact@v7
         if: ${{ always() && !inputs.skip-book }}

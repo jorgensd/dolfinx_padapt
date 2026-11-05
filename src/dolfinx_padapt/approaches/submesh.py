@@ -73,7 +73,7 @@ class SubmeshApproach(BlockApproach):
                 else:
                     if (i, field.boundary) not in self._facet_submeshes:
                         # The facets with the marker of the field whose cell has degree i
-                        facets = self._problem.facet_tags.find(field.boundary)
+                        facets = self._facet_tags.find(field.boundary)
                         facets = facets[cell_degrees[f_to_c.array[f_to_c.offsets[facets]]] == i]
                         facet_mesh, facet_map, _, _ = dolfinx.mesh.create_submesh(
                             self._mesh, tdim - 1, facets.astype(np.int32)

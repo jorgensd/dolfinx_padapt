@@ -29,7 +29,9 @@ generated with GMSH, we increase the degree of the cells with the largest error.
 The library also solves the Poisson equation (in 2D and 3D), linear elasticity, the Stokes
 equations and a contact problem, see the [Poisson](demos/demo_poisson),
 [elasticity](demos/demo_elasticity), [Stokes](demos/demo_stokes) and
-[Signorini](demos/demo_signorini) demos.
+[Signorini](demos/demo_signorini) demos. Cells can also be split (h-refinement), or the
+library can choose between splitting and enriching each cell (hp-refinement), see the
+[hp demo](demos/demo_hp).
 
 - [Getting started](installation): installation, and running the demos and the tests.
 - [The method](method): the adaptive loop, the discretisation and the error indicator.

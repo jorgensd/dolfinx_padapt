@@ -70,7 +70,8 @@ Starting from degree $p_{min}$ on every cell, {py:func}`dolfinx_padapt.adaptivit
    of the problem (e.g. the proximal point iterations of the Signorini problem,
    {py:func}`dolfinx_padapt.proximal.proximal_point`),
 3. computes the error indicator,
-4. marks cells, and increases their degree by one.
+4. marks cells, and increases their degree by one (p-refinement), splits them (h-refinement), or
+   chooses between the two from the smoothness of the solution (hp-refinement), see below.
 
 The degree of each cell is owned by the approach, within the range $[p_{min}, p_{max}]$ of its
 {py:class}`~dolfinx_padapt.forms.Parameters`, and stored as cell tags
@@ -115,7 +116,23 @@ $p_K > p_{min}$ is lowered by one
 The cells marked for enrichment are not coarsened, and $\theta_c$ should be much smaller than
 $\theta$, such that the cells do not alternate between being enriched and coarsened.
 As the spaces and forms are created from the cell tags at every iteration, lowering a degree is no
-different from increasing it. The mesh itself is never changed.
+different from increasing it.
+
+### h- and hp-refinement
+With h-refinement ({py:attr}`dolfinx_padapt.adaptivity.Refinement.h`), the marked cells are split
+with the algorithm of {cite}`method-plaza2000`, and the new cells get the degree of their parent
+cell. Meshes with curved (higher order) geometry are refined through the straight mesh with the
+same topology, and the nodes of the refined mesh are placed with the coordinates of the original
+mesh, interpolated with the known parent cells
+({py:func}`dolfinx_padapt.refinement.refine_curved`). Optionally, the new nodes on the boundary
+are moved to the exact boundary. The forms are compiled once, for the initial mesh, and are only
+created on the refined meshes.
+
+With hp-refinement ({py:attr}`dolfinx_padapt.adaptivity.Refinement.hp`), the degree of a marked
+cell is increased if the solution is smooth on it, and the cell is split otherwise (or at the
+maximal degree). The smoothness is estimated from the decay of the Legendre coefficients of the
+solution on the cell {cite}`method-mavriplis1994,method-houston2005`
+({py:mod}`dolfinx_padapt.smoothness`). See [the hp demo](demos/demo_hp).
 
 ```{bibliography}
    :filter: cited

@@ -72,6 +72,26 @@ def create_pacman(
     return mesh
 
 
+def pacman_boundary_projection(x: np.ndarray) -> np.ndarray:
+    """Project points on the boundary of the PacMan domain (:func:`create_pacman`) to the exact
+    boundary: the points on the arc are moved to the unit circle, and the points on the straight
+    edges are left in place.
+
+    Args:
+        x: Points on the (discrete) boundary, with shape ``(3, num_points)``.
+
+    Returns:
+        The projected points.
+    """
+    tol = 1e-10
+    straight = ((np.abs(x[1]) < tol) & (x[0] >= -tol)) | ((np.abs(x[0]) < tol) & (x[1] <= tol))
+    radius = np.linalg.norm(x[:2], axis=0)
+    projected = x.copy()
+    arc = ~straight & (radius > tol)
+    projected[:2, arc] /= radius[arc]
+    return projected
+
+
 #: Marker of the flat (top) boundary of :func:`create_half_disk`
 HALF_DISK_FLAT = 1
 #: Marker of the curved (bottom) boundary of :func:`create_half_disk`
@@ -132,3 +152,30 @@ def create_half_disk(
     mesh.topology.create_connectivity(tdim, tdim - 1)
     assert mesh_data.facet_tags is not None
     return mesh, mesh_data.facet_tags
+
+
+def half_disk_boundary_projection(radius: float = 0.5, centre: float = 1.0):
+    """The projection of points on the boundary of the half disk (:func:`create_half_disk`) to
+    the exact boundary: the points on the curved boundary are moved to the circle, and the points
+    on the flat boundary are left in place.
+
+    Args:
+        radius: The radius of the disk.
+        centre: The :math:`y`-coordinate of the centre of the disk.
+
+    Returns:
+        The projection, see :data:`dolfinx_padapt.refinement.BoundaryProjection`.
+    """
+
+    def projection(x: np.ndarray) -> np.ndarray:
+        flat = np.abs(x[1] - centre) < 1e-10
+        offset = x[:2] - np.array([[0.0], [centre]])
+        distance = np.linalg.norm(offset, axis=0)
+        projected = x.copy()
+        curved = ~flat & (distance > 1e-10)
+        projected[:2, curved] = (
+            np.array([[0.0], [centre]]) + radius * offset[:, curved] / distance[curved]
+        )
+        return projected
+
+    return projection

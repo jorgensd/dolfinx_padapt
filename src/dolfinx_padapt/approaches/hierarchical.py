@@ -108,13 +108,28 @@ class HierarchicalApproach(Approach):
                 "submesh approach"
             )
         # The first dims[k] local dofs of a cell span the space of degree k
-        element, self._dims = hierarchical_element(self._mesh.basix_cell(), params.pmax)
-        self._V = dolfinx.fem.functionspace(self._mesh, element)
-        self._uh = dolfinx.fem.Function(self._V, name="u")
+        self._element, self._dims = hierarchical_element(self._mesh.basix_cell(), params.pmax)
+        self._V = dolfinx.fem.functionspace(self._mesh, self._element)
+        # The cell degrees in the compiled forms (replaced by those of the current mesh)
+        self._p_template = self._degrees.p
+        self._compiled = compile_single_forms(
+            self._V, self._h, self._p_template, params, self._problem
+        )
+        self._create_forms()
 
-        p = self._degrees.p
-        compiled = compile_single_forms(self._V, self._h, p, params, self._problem)
-        coeffs = {self._h: self._h, p: p, compiled.u: self._uh}
+    def _mesh_changed(self):
+        self._V = dolfinx.fem.functionspace(self._mesh, self._element)
+        self._create_forms()
+
+    def _create_forms(self):
+        """Create the forms on the current mesh from the compiled forms."""
+        compiled = self._compiled
+        self._uh = dolfinx.fem.Function(self._V, name="u")
+        coeffs = {
+            self._h_template: self._h,
+            self._p_template: self._degrees.p,
+            compiled.u: self._uh,
+        }
         consts = self._constants
         rhs_spaces = [self._V, self._V] if self._problem.is_eigenvalue_problem else [self._V]
         self._a = create_form(compiled.a, [self._V, self._V], self._mesh, {}, coeffs, consts)
@@ -126,6 +141,9 @@ class HierarchicalApproach(Approach):
             name: [create_form(form, [], self._mesh, {}, coeffs, consts)]
             for name, form in compiled.errors.items()
         }
+        for petsc_object in ("_A_full", "_B_full", "_is"):
+            if getattr(self, petsc_object, None) is not None:
+                getattr(self, petsc_object).destroy()
         self._A_full = None
         self._B_full = None
         self._is = None

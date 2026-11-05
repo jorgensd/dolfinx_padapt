@@ -77,27 +77,35 @@ def test_signorini_contact(half_disk, uniform):
     # the plane by the order of the discretisation error: on average less than 0.1% of u_D
     assert penetration < 1e-3 * U_D * contact_length
 
-    # The contact pressure at the nodes of the latent variable
-    pressures, positions = [], []
-    force = 0.0
+    # The contact pressure. Its values at the nodes are not sign preserving where the degree of
+    # the facets alternates, so the sign is checked in the integral sense: the positive part is
+    # small compared to the total pressure.
+    integrals = {"force": 0.0, "positive": 0.0, "total": 0.0, "far": 0.0}
     for (i, name), psi in approach.solution.items():
         if name != "psi":
             continue
         Q = psi.function_space
-        num_owned = Q.dofmap.index_map.size_local
         pressure = dolfinx.fem.Function(Q)
         pressure.x.array[:] = psi.x.array - approach.previous_solution[(i, name)].x.array
         pressure.x.array[:] /= problem.alpha
-        force += dolfinx.fem.assemble_scalar(dolfinx.fem.form(pressure * ufl.dx(domain=Q.mesh)))
-        pressures.append(pressure.x.array[:num_owned])
-        positions.append(Q.tabulate_dof_coordinates()[:num_owned, 0])
-    pressures, positions = np.concatenate(pressures), np.concatenate(positions)
-    force = mesh.comm.allreduce(force, op=MPI.SUM)
-    scale = mesh.comm.allreduce(np.max(np.abs(pressures), initial=0.0), op=MPI.MAX)
+        dx = ufl.Measure("dx", domain=Q.mesh, metadata={"quadrature_degree": 8})
+        y = ufl.SpatialCoordinate(Q.mesh)
+        corners = ufl.conditional(ufl.gt(abs(y[0]), 0.45), 1, 0)
+        integrands = {
+            "force": pressure,
+            "positive": ufl.max_value(pressure, 0),
+            "total": abs(pressure),
+            "far": corners * abs(pressure),
+        }
+        for key, integrand in integrands.items():
+            integrals[key] += dolfinx.fem.assemble_scalar(dolfinx.fem.form(integrand * dx))
+    force, positive, total, far = (
+        mesh.comm.allreduce(value, op=MPI.SUM) for value in integrals.values()
+    )
     assert force < 0
-    assert np.all(pressures <= 1e-6 * scale)
+    assert positive < 1e-2 * total
     # Far from the plane (near the corners of the half disk), there is no contact
-    assert np.all(np.abs(pressures[np.abs(positions) > 0.45]) < 1e-6 * scale)
+    assert far < 1e-8 * total
 
 
 @pytest.mark.parametrize("name", ["restricted", "hierarchical"])

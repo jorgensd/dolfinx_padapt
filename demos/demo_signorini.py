@@ -61,16 +61,22 @@ import matplotlib.pyplot as plt
 import numpy as np
 import ufl
 
-from dolfinx_padapt.adaptivity import solve_adaptive
+from dolfinx_padapt.adaptivity import Refinement, solve_adaptive
 from dolfinx_padapt.approaches import SubmeshApproach
 from dolfinx_padapt.forms import Parameters
-from dolfinx_padapt.mesh import HALF_DISK_CURVED, HALF_DISK_FLAT, create_half_disk
+from dolfinx_padapt.mesh import (
+    HALF_DISK_CURVED,
+    HALF_DISK_FLAT,
+    create_half_disk,
+    half_disk_boundary_projection,
+)
 from dolfinx_padapt.models import SignoriniProblem
-from dolfinx_padapt.plotting import Animation
+from dolfinx_padapt.plotting import Animation, plot_convergence
 
 mesh, facet_tags = create_half_disk(MPI.COMM_WORLD, radius=0.5, centre=1.0, h=0.06)
 u_D = 0.72
 plane = -0.13
+E, nu, alpha = 2e4, 0.4, 0.1
 
 
 def displacement(x):
@@ -90,9 +96,9 @@ problem = SignoriniProblem(
     displacement=displacement,
     gap=gap,
     direction=(0.0, -1.0),
-    E=2e4,
-    nu=0.4,
-    alpha=0.1,
+    E=E,
+    nu=nu,
+    alpha=alpha,
 )
 # -
 
@@ -163,6 +169,57 @@ if mesh.comm.rank == 0:
 #
 # The highest degree is used along $\Gamma$, where the residual of the traction is measured, and
 # at the corners between $\Gamma_D$ and $\Gamma$.
+#
+# ## hp-adaptivity
+# The displacement is not smooth where the contact region ends, and at the corners between
+# $\Gamma_D$ and $\Gamma$. With p-refinement on a fixed mesh, the error indicator stagnates once
+# the cells there have the maximal degree. With hp-refinement (see [the hp demo](./demo_hp)), these
+# cells are split instead, while the degree is increased where the displacement is smooth.
+# The new nodes on $\Gamma$ are moved to the circle
+# ({py:func}`dolfinx_padapt.mesh.half_disk_boundary_projection`), and the facet tags are
+# transferred to the refined meshes, such that the latent variable lives on the facets of the
+# refined contact boundary. We start from a coarser mesh, and compare with p-refinement on the same
+# mesh.
+
+# + tags=["scroll-output"]
+histories = {}
+for refinement in (Refinement.p, Refinement.hp):
+    PETSc.Sys.Print(f"{refinement.value}-refinement")
+    coarse_mesh, coarse_tags = create_half_disk(MPI.COMM_WORLD, radius=0.5, centre=1.0, h=0.1)
+    coarse_problem = SignoriniProblem(
+        coarse_mesh,
+        coarse_tags,
+        dirichlet_marker=HALF_DISK_FLAT,
+        contact_marker=HALF_DISK_CURVED,
+        displacement=displacement,
+        gap=gap,
+        direction=(0.0, -1.0),
+        E=E,
+        nu=nu,
+        alpha=alpha,
+    )
+    hp_approach = SubmeshApproach(coarse_problem, params)
+    kwargs = dict(
+        max_iterations=12,
+        refinement=refinement,
+        boundary_projection=half_disk_boundary_projection(radius=0.5, centre=1.0),
+    )
+    if refinement == Refinement.hp:
+        with Animation(MPI.COMM_WORLD, "signorini_hp.gif") as animation:
+            histories["hp-refinement"] = solve_adaptive(hp_approach, callback=animation, **kwargs)
+    else:
+        histories["p-refinement"] = solve_adaptive(hp_approach, **kwargs)
+# -
+
+# <img src="./signorini_hp.gif" alt="gif" class="bg-primary mb-1" width="100%">
+
+if MPI.COMM_WORLD.rank == 0:
+    plot_convergence(histories, "signorini_convergence.png", ylabel=r"$\eta$")
+
+# ![convergence](./signorini_convergence.png)
+#
+# The cells are split along the edges of the contact region and at the corners, and the error
+# indicator keeps decreasing, while it stagnates with p-refinement.
 #
 # ```{bibliography}
 #    :filter: cited

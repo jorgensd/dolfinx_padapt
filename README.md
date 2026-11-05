@@ -13,7 +13,7 @@ It provides three representations of such a space:
 
 It solves the Laplace eigenvalue problem, the Poisson equation, linear elasticity and the Stokes
 equations, in 2D and 3D, and the Signorini contact problem with the latent variable proximal point
-method.
+method. Besides p-refinement, it supports h- and hp-refinement of meshes with curved geometry.
 
 The documentation, with the method, the demos and a comparison of the approaches, is at
 <https://jorgensd.github.io/dolfinx_padapt/>.

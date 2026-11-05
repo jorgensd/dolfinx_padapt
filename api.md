@@ -29,6 +29,20 @@
    :members:
 ```
 
+## Refinement
+
+```{eval-rst}
+.. automodule:: dolfinx_padapt.refinement
+   :members:
+```
+
+## Smoothness indicator
+
+```{eval-rst}
+.. automodule:: dolfinx_padapt.smoothness
+   :members:
+```
+
 ## Degrees
 
 ```{eval-rst}

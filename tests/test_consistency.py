@@ -9,6 +9,7 @@ import dolfinx.fem.petsc
 import numpy as np
 import pytest
 import ufl
+from conftest import all_ranks
 
 from dolfinx_padapt import DegreeField, EigenvalueProblem, PoissonProblem, create_pacman
 from dolfinx_padapt.adaptivity import (
@@ -158,7 +159,7 @@ def test_refine(mesh):
     cells = np.arange(min(5, num_owned), dtype=np.int32)
     changed = degrees.refine(cells)
     assert changed == mesh.comm.allreduce(len(cells), op=MPI.SUM)
-    assert np.all(degrees.cell_degrees[cells] == 2)
+    assert all_ranks(np.all(degrees.cell_degrees[cells] == 2))
     assert degrees.refine(cells) == 0  # Capped at pmax
     assert degree_histogram(degrees)[2] == mesh.comm.allreduce(len(cells), op=MPI.SUM)
 
@@ -174,8 +175,8 @@ def test_mark_cells(mesh, strategy):
     saturated = eta > 0.8
     degrees.set_degrees(np.where(saturated, 2, 1).astype(np.int32))
     marked = mark_cells(eta, 0.5, degrees, strategy)
-    assert np.all(marked < num_owned)
-    assert not np.any(saturated[marked])
+    assert all_ranks(np.all(marked < num_owned))
+    assert all_ranks(not np.any(saturated[marked]))
     assert mesh.comm.allreduce(len(marked), op=MPI.SUM) > 0
 
 
@@ -297,7 +298,7 @@ def test_estimator_uniform_degree(cube, name, continuous):
     eta2 = dolfinx.fem.assemble_vector(dolfinx.fem.form(form))
     eta2.scatter_reverse(dolfinx.la.InsertMode.add)
     eta_ref = np.sqrt(np.abs(eta2.array[Q.dofmap.list[: owned_cells(cube), 0]]))
-    assert np.allclose(eta, eta_ref, rtol=1e-8, atol=1e-12)
+    assert all_ranks(np.allclose(eta, eta_ref, rtol=1e-8, atol=1e-12))
 
 
 def test_coarsen(mesh):
@@ -307,15 +308,15 @@ def test_coarsen(mesh):
     degrees.set_degrees(np.full(num_owned, 2, dtype=np.int32))
     cells = np.arange(num_owned, dtype=np.int32)
     assert degrees.coarsen(cells) == mesh.comm.allreduce(num_owned, op=MPI.SUM)
-    assert np.all(degrees.cell_degrees == 1)
+    assert all_ranks(np.all(degrees.cell_degrees == 1))
     assert degrees.coarsen(cells) == 0  # Bounded below by pmin
     # Enrich and coarsen at the same time
     half = cells[: num_owned // 2]
     degrees.change(half, np.empty(0, dtype=np.int32))
     degrees.change(half, cells[num_owned // 2 :])
-    assert np.all(degrees.cell_degrees[half] == 3)
-    assert np.all(degrees.cell_degrees[num_owned // 2 : num_owned] == 1)
-    assert mark_cells_for_coarsening(np.zeros(num_owned), 0.1, degrees).size == 0
+    assert all_ranks(np.all(degrees.cell_degrees[half] == 3))
+    assert all_ranks(np.all(degrees.cell_degrees[num_owned // 2 : num_owned] == 1))
+    assert all_ranks(mark_cells_for_coarsening(np.zeros(num_owned), 0.1, degrees).size == 0)
 
 
 def test_change_overlap(mesh):
@@ -327,7 +328,7 @@ def test_change_overlap(mesh):
     coarsen = cells if mesh.comm.rank == 0 else np.empty(0, dtype=np.int32)
     with pytest.raises(ValueError):
         degrees.change(cells, coarsen)
-    assert np.all(degrees.cell_degrees == 2)  # Nothing changed
+    assert all_ranks(np.all(degrees.cell_degrees == 2))  # Nothing changed
 
 
 def test_change_not_owned(mesh):
@@ -340,7 +341,7 @@ def test_change_not_owned(mesh):
         degrees.refine(cells)
     with pytest.raises(ValueError):
         degrees.coarsen(np.array([-1], dtype=np.int32))
-    assert np.all(degrees.cell_degrees == 1)
+    assert all_ranks(np.all(degrees.cell_degrees == 1))
 
 
 # Linear elasticity and Stokes (submesh approach only)

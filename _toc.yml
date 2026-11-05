@@ -19,6 +19,7 @@ parts:
       - file: demos/demo_elasticity.py
       - file: demos/demo_stokes.py
       - file: demos/demo_signorini.py
+      - file: demos/demo_hp.py
   - caption: Reference
     chapters:
       - file: api

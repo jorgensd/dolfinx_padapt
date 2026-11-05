@@ -1,4 +1,4 @@
-"""The adaptive loop: solve, estimate, mark and enrich."""
+"""The adaptive loop: solve, estimate, mark, and enrich (p) or refine (h) the marked cells."""
 
 import time
 import typing
@@ -13,6 +13,8 @@ import numpy.typing as npt
 
 from .approaches import Approach
 from .degrees import DegreeField
+from .refinement import BoundaryProjection
+from .smoothness import decay_factor
 
 
 class MarkingStrategy(str, Enum):
@@ -23,6 +25,18 @@ class MarkingStrategy(str, Enum):
     #: :math:`\eta_K^2 > \theta^2 \Vert\eta\Vert^2 / N`, see
     #: :func:`dolfinx.mesh.mark_equidistribution`
     equidistribution = "equidistribution"
+
+
+class Refinement(str, Enum):
+    """What happens to a marked cell in the adaptive loop."""
+
+    #: Increase the degree (the mesh is fixed)
+    p = "p"
+    #: Split the cell (the new cells keep the degree of their parent)
+    h = "h"
+    #: Increase the degree where the solution is smooth, and split the cell otherwise (or at the
+    #: maximal degree), see :mod:`dolfinx_padapt.smoothness`
+    hp = "hp"
 
 
 @dataclass
@@ -44,10 +58,11 @@ def mark_cells(
     theta: float,
     degrees: DegreeField,
     strategy: MarkingStrategy | str = MarkingStrategy.maximum,
+    include_max_degree: bool = False,
 ) -> npt.NDArray[np.int32]:
-    r"""Mark the cells to enrich, among the cells that are not at the maximal degree.
+    r"""Mark the cells to enrich (or refine).
 
-    See :class:`MarkingStrategy`. The indicator of cells at the
+    See :class:`MarkingStrategy`. Unless ``include_max_degree``, the indicator of cells at the
     maximal degree is set to zero, as the error at a singularity would otherwise keep selecting
     the same (saturated) cells.
 
@@ -56,6 +71,7 @@ def mark_cells(
         theta: Marking parameter in (0, 1].
         degrees: The degree of each cell.
         strategy: Marking strategy.
+        include_max_degree: Also mark cells at the maximal degree (that can be split).
 
     Returns:
         The (local) indices of the marked owned cells.
@@ -66,7 +82,8 @@ def mark_cells(
     values = dolfinx.la.vector(cell_map, dtype=eta.dtype)
     values.array[: cell_map.size_local] = eta if strategy == MarkingStrategy.maximum else eta**2
     values.scatter_forward()
-    values.array[degrees.cell_degrees >= degrees.pmax] = 0.0
+    if not include_max_degree:
+        values.array[degrees.cell_degrees >= degrees.pmax] = 0.0
     if strategy == MarkingStrategy.maximum:
         marked = dolfinx.mesh.mark_maximum(values.array, cell_map, theta)
     else:
@@ -114,12 +131,20 @@ def solve_adaptive(
     tol: float = 1e-8,
     coarsen_theta: float | None = None,
     callback: typing.Callable[[Approach, IterationResult], None] | None = None,
+    refinement: Refinement | str = Refinement.p,
+    smoothness_threshold: float = 0.2,
+    boundary_projection: BoundaryProjection | None = None,
 ) -> list[IterationResult]:
-    """Run the P-adaptive loop.
+    """Run the p-, h- or hp-adaptive loop.
 
-    Every iteration rebuilds the space for the current degrees, assembles and solves the problem
-    of the approach, estimates the error and increases the degree of the marked cells (and,
-    optionally, decreases the degree of the cells with a small error).
+    Every iteration rebuilds the space for the current degrees (and mesh), assembles and solves
+    the problem of the approach, estimates the error and increases the degree of the marked cells
+    (and, optionally, decreases the degree of the cells with a small error). With
+    h-refinement, the marked cells are split instead. With hp-refinement, a marked cell is split
+    instead of enriched if the solution is not smooth on it
+    (:func:`dolfinx_padapt.smoothness.decay_factor` above ``smoothness_threshold``) or if it is at
+    the maximal degree. The new cells get the degree of their parent cell
+    (:meth:`dolfinx_padapt.approaches.Approach.refine`).
 
     Note:
         Collective.
@@ -135,17 +160,26 @@ def solve_adaptive(
             enrichment).
         callback: Called with the approach (holding the solution) and the result of every
             iteration, before the degrees are increased.
+        refinement: p-, h- or hp-refinement.
+        smoothness_threshold: With hp-refinement, a marked cell is enriched if the decay factor
+            of the Legendre coefficients of the (first field of the) solution is below this
+            threshold, and split otherwise.
+        boundary_projection: With h- and hp-refinement, move the new nodes on the boundary to
+            the exact boundary with this map (see
+            :func:`dolfinx_padapt.refinement.refine_curved`).
 
     Returns:
         The result of each iteration.
     """
+    refinement = Refinement(refinement)
     history = []
-    degrees = approach.degrees
     comm = approach.mesh.comm
     problem = approach.problem
     for it in range(max_iterations):
         timings = {}
         t = time.perf_counter()
+        # The degrees (and the mesh) of the current iteration
+        degrees = approach.degrees
         approach.update()
         timings["update"] = time.perf_counter() - t
 
@@ -176,10 +210,25 @@ def solve_adaptive(
 
         if result.error < tol:
             break
-        refine = mark_cells(eta, theta, degrees, strategy)
+        # Cells at the maximal degree can be split
+        splits = refinement in (Refinement.h, Refinement.hp)
+        marked = mark_cells(eta, theta, degrees, strategy, include_max_degree=splits)
+        split = np.empty(0, dtype=np.int32)
+        enrich = np.empty(0, dtype=np.int32)
+        if refinement == Refinement.p:
+            enrich = marked
+        elif refinement == Refinement.h:
+            split = marked
+        else:
+            smooth = decay_factor(approach)[marked] <= smoothness_threshold
+            enrich = marked[smooth & (degrees.cell_degrees[marked] < degrees.pmax)]
+            split = np.setdiff1d(marked, enrich).astype(np.int32)
         coarsen = np.empty(0, dtype=np.int32)
         if coarsen_theta is not None:
-            coarsen = np.setdiff1d(mark_cells_for_coarsening(eta, coarsen_theta, degrees), refine)
-        if degrees.change(refine, coarsen) == 0:
+            coarsen = np.setdiff1d(mark_cells_for_coarsening(eta, coarsen_theta, degrees), marked)
+        changed = degrees.change(enrich, coarsen)
+        if comm.allreduce(len(split), op=MPI.SUM) > 0:
+            approach.refine(split, boundary_projection)
+        elif changed == 0:
             break
     return history

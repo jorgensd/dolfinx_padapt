@@ -186,7 +186,11 @@ def test_refine_curved_boundary_projection(mesh):
     facets = dolfinx.mesh.exterior_facet_indices(fine.topology)
     nodes = np.unique(dolfinx.mesh.entities_to_geometry(fine, tdim - 1, facets))
     x = fine.geometry.x[nodes]
-    straight = (np.isclose(x[:, 1], 0) & (x[:, 0] >= 0)) | (np.isclose(x[:, 0], 0) & (x[:, 1] <= 0))
+    # The straight edges (including the corner at the origin, up to round-off)
+    tol = 1e-12
+    straight = (np.isclose(x[:, 1], 0) & (x[:, 0] >= -tol)) | (
+        np.isclose(x[:, 0], 0) & (x[:, 1] <= tol)
+    )
     assert all_ranks(np.allclose(np.linalg.norm(x[~straight, :2], axis=1), 1.0))
 
     exact = 3 * np.pi / 4

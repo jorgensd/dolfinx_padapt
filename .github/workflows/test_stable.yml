@@ -69,10 +69,9 @@ jobs:
       - id: install
         uses: ./.github/actions/install-dependencies
 
-      # scifem has a C++ extension, which is built against the DOLFINx of the image
       - name: Install requirements
         run: |
-          python3 -m pip install -U pip setuptools pkgconfig scikit-build-core nanobind
+          python3 -m pip install -U pip setuptools
           python3 -m pip install --no-build-isolation .[docs,test]
 
       - name: Run tests

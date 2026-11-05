@@ -81,12 +81,11 @@ jobs:
       - name: Install common packages
         uses: ./.github/actions/install-dependencies
 
-      # scifem has a C++ extension, which is built against the DOLFINx of the image
       - name: Install book deps
         id: deps
         run: |
           echo "jupyter-book<2.0" > "$PIP_CONSTRAINT"
-          python3 -m pip install -U pip setuptools pkgconfig scikit-build-core nanobind
+          python3 -m pip install -U pip setuptools
           python3 -m pip install --no-build-isolation .[docs]
 
       - name: Build the book

@@ -17,7 +17,7 @@ from petsc4py import PETSc
 import dolfinx
 import numpy as np
 
-from dolfinx_padapt import DegreeField, create_pacman
+from dolfinx_padapt import DegreeField, EigenvalueProblem, create_pacman
 from dolfinx_padapt.adaptivity import solve_adaptive
 from dolfinx_padapt.approaches import RestrictedApproach, restrict_function_space
 from dolfinx_padapt.forms import Parameters
@@ -25,7 +25,6 @@ from dolfinx_padapt.plotting import Animation
 
 mesh = create_pacman(MPI.COMM_WORLD, h=0.3, h_corner=0.01)
 params = Parameters(pmin=1, pmax=6)
-degrees = DegreeField(mesh, params.pmin, params.pmax)
 # -
 
 # ## Restricting a dofmap
@@ -37,6 +36,7 @@ degrees = DegreeField(mesh, params.pmin, params.pmax)
 # As an illustration, we give the cells in the left half of the domain degree 2, and restrict a
 # second order space to them.
 
+degrees = DegreeField(mesh, 1, 2)
 V2 = dolfinx.fem.functionspace(mesh, ("DG", 2))
 midpoints = dolfinx.mesh.compute_midpoints(
     mesh, mesh.topology.dim, np.arange(degrees.num_owned_cells, dtype=np.int32)
@@ -76,8 +76,7 @@ PETSc.Sys.Print(f"Cells of degree 1: {num_outside}, next to a cell of degree 2: 
 # The forms of every block $(i, j)$ are compiled once. Every iteration restricts the parent spaces
 # to the current degrees, and creates the forms with these spaces.
 
-degrees.set_degrees(np.full(degrees.num_owned_cells, params.pmin, dtype=np.int32))
-approach = RestrictedApproach(degrees, params)
+approach = RestrictedApproach(EigenvalueProblem(mesh), params)
 
 # + tags=["scroll-output"]
 with Animation(mesh.comm, "restricted.gif") as animation:

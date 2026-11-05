@@ -81,8 +81,7 @@ class BlockForms:
     #: Right hand side of each block: the diagonal blocks of the mass matrix (eigenvalue problem)
     #: or the linear forms (source problem)
     rhs: list[CompiledForm]
-    #: Estimator split into ``(i,)``: dx(i) + ds(i) and ``(i, j)``: dS(pair_tag(i, j)), such that
-    #: only pieces where all degrees are active have to be created.
+    #: Estimator split into ``(i,)``: dx(i) + ds(i) and ``(i, j)``: dS(pair_tag(i, j))
     eta: dict[tuple[int, ...], CompiledForm]
     #: Error functionals of each degree, by name
     errors: dict[int, dict[str, CompiledForm]]

@@ -16,32 +16,54 @@ from dolfinx.fem import create_form
 
 from ..degrees import DegreeField
 from ..forms import BlockForms, Parameters, cell_size, compile_block_forms
-from ..problems import EigenvalueProblem, Problem
+from ..problems import Problem
 
 
 class Approach(abc.ABC):
     """A representation of a space with a cell-wise varying polynomial degree.
 
+    The approach owns the degree of each cell (:attr:`degrees`), which starts at ``params.pmin``
+    and stays within ``[params.pmin, params.pmax]``, the degrees the forms are compiled for.
+
     Args:
-        degrees: The degree of each cell.
+        problem: The problem to solve, which defines the mesh.
         params: Discretisation parameters.
-        problem: The problem to solve, by default the Laplace eigenvalue problem.
     """
 
     name: str
 
-    def __init__(self, degrees: DegreeField, params: Parameters, problem: Problem | None = None):
-        self.degrees = degrees
-        self.mesh = degrees.mesh
-        self.params = params
-        self.problem = problem if problem is not None else EigenvalueProblem(self.mesh)
-        self.h = cell_size(self.mesh)
-        self.A: PETSc.Mat | None = None
-        self.B: PETSc.Mat | PETSc.Vec | None = None
+    def __init__(self, problem: Problem, params: Parameters):
+        self._problem = problem
+        self._mesh = problem.mesh
+        self._params = params
+        self._degrees = DegreeField(self._mesh, params.pmin, params.pmax)
+        self._h = cell_size(self._mesh)
+        self._A: PETSc.Mat | None = None
+        self._B: PETSc.Mat | PETSc.Vec | None = None
+
+    @property
+    def mesh(self) -> dolfinx.mesh.Mesh:
+        """The mesh."""
+        return self._mesh
+
+    @property
+    def params(self) -> Parameters:
+        """The discretisation parameters."""
+        return self._params
+
+    @property
+    def problem(self) -> Problem:
+        """The problem."""
+        return self._problem
+
+    @property
+    def degrees(self) -> DegreeField:
+        """The degree of each cell."""
+        return self._degrees
 
     @property
     def _constants(self) -> dict:
-        return {c: c for c in self.problem.constants}
+        return {c: c for c in self._problem.constants}
 
     @abc.abstractmethod
     def update(self):
@@ -81,28 +103,28 @@ class Approach(abc.ABC):
 
     def estimate(self) -> npt.NDArray[np.float64]:
         """Error indicator η_K for every owned cell (indexed by local cell index)."""
-        Q = self.h.function_space
+        Q = self._h.function_space
         eta2 = dolfinx.la.vector(Q.dofmap.index_map, dtype=dolfinx.default_scalar_type)
         for form in self._estimator_forms():
             eta2.array[:] += dolfinx.fem.assemble_vector(form).array
         eta2.scatter_reverse(dolfinx.la.InsertMode.add)
-        num_owned = self.degrees.num_owned_cells
+        num_owned = self._degrees.num_owned_cells
         return np.sqrt(np.abs(eta2.array[Q.dofmap.list[:num_owned, 0]]))
 
     def errors(self) -> dict[str, float]:
         """The global value of each squared error measure of the problem."""
         return {
-            name: self.mesh.comm.allreduce(
+            name: self._mesh.comm.allreduce(
                 sum(dolfinx.fem.assemble_scalar(form) for form in forms), op=MPI.SUM
             )
             for name, forms in self._error_forms().items()
         }
 
     def _replace_system(self, A: PETSc.Mat, B: PETSc.Mat | PETSc.Vec):
-        for old in (self.A, self.B):
+        for old in (self._A, self._B):
             if old is not None:
                 old.destroy()
-        self.A, self.B = A, B
+        self._A, self._B = A, B
         return A, B
 
 
@@ -110,35 +132,39 @@ class BlockApproach(Approach):
     """One space per polynomial degree, coupled through interface integrals.
 
     All forms are compiled once (:func:`compile_block_forms`). Every update only creates
-    spaces for the active degrees and calls ``create_form`` with the new spaces and integration
+    spaces for every degree and calls ``create_form`` with the new spaces and integration
     entities.
     """
 
-    def __init__(self, degrees: DegreeField, params: Parameters, problem: Problem | None = None):
-        super().__init__(degrees, params, problem)
-        cell = self.mesh.basix_cell()
+    def __init__(self, problem: Problem, params: Parameters):
+        super().__init__(problem, params)
+        cell = self._mesh.basix_cell()
         family = "Lagrange" if params.continuous else "DG"
-        self.elements = {}
+        self._elements = {}
         for i in params.degrees:
-            for field in self.problem.fields:
+            for field in self._problem.fields:
                 degree = field.degree(i)
                 if degree < 0 or (params.continuous and degree < 1):
                     raise ValueError(f"Degree {degree} of field {field.name} is not supported")
-                self.elements[(i, field.name)] = basix.ufl.element(
+                self._elements[(i, field.name)] = basix.ufl.element(
                     family, cell, degree, shape=field.shape, discontinuous=not params.continuous
                 )
-        self.forms: BlockForms = compile_block_forms(
-            self.mesh, self._ufl_spaces(), self.h, params, self.problem
+        self._forms: BlockForms = compile_block_forms(
+            self._mesh, self._ufl_spaces(), self._h, params, self._problem
         )
-        self.active: list[int] = []
+
+    @property
+    def spaces(self) -> dict[tuple[int, str], dolfinx.fem.FunctionSpace]:
+        """The function space of each ``(degree, field)``, see :meth:`update`."""
+        return self._spaces
 
     @property
     def _field_names(self) -> list[str]:
-        return [field.name for field in self.problem.fields]
+        return [field.name for field in self._problem.fields]
 
     @property
     def _constants(self) -> dict:
-        return {c: c for c in self.problem.constants + self.forms.constants}
+        return {c: c for c in self._problem.constants + self._forms.constants}
 
     @abc.abstractmethod
     def _ufl_spaces(self) -> dict[tuple[int, str], ufl.FunctionSpace]:
@@ -146,72 +172,69 @@ class BlockApproach(Approach):
 
     @abc.abstractmethod
     def _create_spaces(
-        self, active: list[int]
+        self, degrees: list[int]
     ) -> tuple[dict[tuple[int, str], dolfinx.fem.FunctionSpace], list[dolfinx.mesh.EntityMap]]:
-        """Function spaces of each field for the active degrees, and the entity maps needed to
-        assemble them over the parent mesh."""
+        """Function spaces of each field for each degree, and the entity maps needed to assemble
+        them over the parent mesh. A degree without cells (on a process, or on all processes) has
+        an empty space."""
 
     def update(self):
-        self.active = self.degrees.active_degrees()
-        entities = self.degrees.integration_entities(self.params.continuous)
-        self.spaces, self.entity_maps = self._create_spaces(self.active)
-        #: The blocks of the system: the fields of each active degree
-        self.blocks = [(i, name) for i in self.active for name in self._field_names]
-        self.uh = {
-            key: dolfinx.fem.Function(self.spaces[key], name=f"{key[1]}_{key[0]}")
-            for key in self.blocks
+        degrees = list(self._params.degrees)
+        entities = self._degrees.integration_entities(self._params.continuous)
+        self._spaces, self._entity_maps = self._create_spaces(degrees)
+        #: The blocks of the system: the fields of each degree
+        self._blocks = [(i, name) for i in degrees for name in self._field_names]
+        self._uh = {
+            key: dolfinx.fem.Function(self._spaces[key], name=f"{key[1]}_{key[0]}")
+            for key in self._blocks
         }
-        coeffs = {self.h: self.h} | {self.forms.u[key]: self.uh[key] for key in self.blocks}
+        coeffs = {self._h: self._h} | {self._forms.u[key]: self._uh[key] for key in self._blocks}
         consts = self._constants
 
         def make(compiled, spaces):
             if compiled is None:
                 return None
             return create_form(
-                compiled, spaces, self.mesh, entities, coeffs, consts, self.entity_maps
+                compiled, spaces, self._mesh, entities, coeffs, consts, self._entity_maps
             )
 
-        index = self.forms.index
-        self.a = [
+        index = self._forms.index
+        self._a = [
             [
-                make(self.forms.a[index(r)][index(c)], [self.spaces[r], self.spaces[c]])
-                for c in self.blocks
+                make(self._forms.a[index(r)][index(c)], [self._spaces[r], self._spaces[c]])
+                for c in self._blocks
             ]
-            for r in self.blocks
+            for r in self._blocks
         ]
-        if self.problem.is_eigenvalue_problem:
-            self.rhs = [
+        if self._problem.is_eigenvalue_problem:
+            self._rhs = [
                 [
-                    make(self.forms.rhs[index(r)], [self.spaces[r], self.spaces[r]])
+                    make(self._forms.rhs[index(r)], [self._spaces[r], self._spaces[r]])
                     if r == c
                     else None
-                    for c in self.blocks
+                    for c in self._blocks
                 ]
-                for r in self.blocks
+                for r in self._blocks
             ]
         else:
-            self.rhs = [make(self.forms.rhs[index(r)], [self.spaces[r]]) for r in self.blocks]
-        Q = self.h.function_space
-        self.eta = [
-            make(compiled, [Q])
-            for key, compiled in self.forms.eta.items()
-            if all(d in self.active for d in key)
-        ]
-        self.error_forms: dict[str, list[dolfinx.fem.Form]] = {}
-        for i in self.active:
-            for name, compiled in self.forms.errors[i].items():
-                self.error_forms.setdefault(name, []).append(make(compiled, []))
+            self._rhs = [make(self._forms.rhs[index(r)], [self._spaces[r]]) for r in self._blocks]
+        Q = self._h.function_space
+        self._eta = [make(compiled, [Q]) for compiled in self._forms.eta.values()]
+        self._error_functionals: dict[str, list[dolfinx.fem.Form]] = {}
+        for i in degrees:
+            for name, compiled in self._forms.errors[i].items():
+                self._error_functionals.setdefault(name, []).append(make(compiled, []))
 
     def assemble(self):
-        A = dolfinx.fem.petsc.assemble_matrix(self.a)
+        A = dolfinx.fem.petsc.assemble_matrix(self._a)
         A.assemble()
-        if self.problem.is_eigenvalue_problem:
-            B = dolfinx.fem.petsc.assemble_matrix(self.rhs)
+        if self._problem.is_eigenvalue_problem:
+            B = dolfinx.fem.petsc.assemble_matrix(self._rhs)
             B.assemble()
         else:
             # Owned entries of each block stacked (as the matrix), then the ghosts.
             # A single form is not assembled as a blocked vector.
-            rhs = self.rhs[0] if len(self.rhs) == 1 else self.rhs
+            rhs = self._rhs[0] if len(self._rhs) == 1 else self._rhs
             B = dolfinx.fem.petsc.assemble_vector(rhs)
             B.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
         return self._replace_system(A, B)
@@ -219,51 +242,51 @@ class BlockApproach(Approach):
     def _block_sizes(self) -> list[int]:
         """Number of owned entries of each block in the monolithic layout."""
         return [
-            self.spaces[key].dofmap.index_map.size_local * self.spaces[key].dofmap.index_map_bs
-            for key in self.blocks
+            self._spaces[key].dofmap.index_map.size_local * self._spaces[key].dofmap.index_map_bs
+            for key in self._blocks
         ]
 
     def set_solution(self, x):
         # Monolithic block layout: the owned dofs of each block, stacked per process
         values = x.array_r
         start = 0
-        for key, n in zip(self.blocks, self._block_sizes()):
-            uh = self.uh[key]
+        for key, n in zip(self._blocks, self._block_sizes()):
+            uh = self._uh[key]
             uh.x.array[:n] = values[start : start + n]
             uh.x.scatter_forward()
             start += n
         assert start == len(values)
 
     def nullspace(self):
-        if not self.problem.nullspace_fields:
+        if not self._problem.nullspace_fields:
             return None
-        assert self.A is not None
-        vector = self.A.createVecRight()
+        assert self._A is not None
+        vector = self._A.createVecRight()
         values = np.zeros(vector.getLocalSize(), dtype=dolfinx.default_scalar_type)
         start = 0
-        for (_, name), n in zip(self.blocks, self._block_sizes()):
-            values[start : start + n] = 1.0 if name in self.problem.nullspace_fields else 0.0
+        for (_, name), n in zip(self._blocks, self._block_sizes()):
+            values[start : start + n] = 1.0 if name in self._problem.nullspace_fields else 0.0
             start += n
         vector.setArray(values)
         vector.normalize()
-        return PETSc.NullSpace().create(vectors=[vector], comm=self.mesh.comm)
+        return PETSc.NullSpace().create(vectors=[vector], comm=self._mesh.comm)
 
     def _estimator_forms(self):
-        return self.eta
+        return self._eta
 
     def _error_forms(self):
-        return self.error_forms
+        return self._error_functionals
 
     @property
     def num_dofs(self):
         return sum(
-            V.dofmap.index_map.size_global * V.dofmap.index_map_bs for V in self.spaces.values()
+            V.dofmap.index_map.size_global * V.dofmap.index_map_bs for V in self._spaces.values()
         )
 
     def interpolate_solution(self, u, field=None):
         field = field or self._field_names[0]
-        for i in self.active:
-            self._interpolate(u, self.uh[(i, field)], i)
+        for i in self._params.degrees:
+            self._interpolate(u, self._uh[(i, field)], i)
         u.x.scatter_forward()
 
     @abc.abstractmethod

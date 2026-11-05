@@ -38,7 +38,7 @@ from petsc4py import PETSc
 
 import numpy as np
 
-from dolfinx_padapt import DegreeField, EigenvalueProblem, create_pacman
+from dolfinx_padapt import EigenvalueProblem, create_pacman
 from dolfinx_padapt.adaptivity import mark_cells, solve_adaptive
 from dolfinx_padapt.approaches import SubmeshApproach
 from dolfinx_padapt.forms import Parameters
@@ -49,14 +49,11 @@ num_cells = mesh.topology.index_map(mesh.topology.dim).size_global
 PETSc.Sys.Print(f"Number of cells: {num_cells}, geometry order: {mesh.geometry.cmaps[0].degree}")
 # -
 
-# ## The degree of each cell
-# We store the degree of each cell as cell tags, where the value of each tag is the polynomial
-# degree of the cell. All cells start with degree $p_{min}=1$, and the degree is capped at
-# $p_{max}=6$.
+# ## The range of degrees
+# All cells start with degree $p_{min}=1$, and the degree is capped at $p_{max}=6$. The range of
+# degrees is a discretisation parameter, as it decides which spaces and forms are compiled.
 
 params = Parameters(pmin=1, pmax=6)
-degrees = DegreeField(mesh, params.pmin, params.pmax)
-PETSc.Sys.Print(f"Degrees of the first cells on process 0: {degrees.ct.values[:10]}")
 
 # ## Discretisation
 # Let $V_i$ be the discontinuous Lagrange space of degree $i$ on $\Omega_i$. On the facets between
@@ -85,15 +82,23 @@ PETSc.Sys.Print(f"Degrees of the first cells on process 0: {degrees.ct.values[:1
 # This happens when we create the approach for the eigenvalue problem:
 
 problem = EigenvalueProblem(mesh)
-approach = SubmeshApproach(degrees, params, problem)
+approach = SubmeshApproach(problem, params)
+
+# The approach owns the degree of each cell ({py:class}`dolfinx_padapt.degrees.DegreeField`),
+# stored as cell tags, where the value of each tag is the polynomial degree of the cell.
+
+degrees = approach.degrees
+PETSc.Sys.Print(f"Degrees of the first cells on process 0: {degrees.ct.values[:10]}")
 
 # ## One iteration, step by step
-# At every iteration, the approach extracts the submesh of each active degree with
+# At every iteration, the approach extracts the submesh of each degree with
 # {py:func}`dolfinx.mesh.create_submesh`, creates the function spaces on them, and creates the forms
 # with {py:func}`dolfinx.fem.create_form`. The integration entities are given in the numbering of
 # the parent mesh, and the entity maps of the submeshes map them to the cells of each submesh.
-# The interface entities are found with {py:func}`scifem.find_interface` and
-# ordered with {py:func}`scifem.compute_interface_data`.
+# The interior facets are computed once with {py:func}`dolfinx.fem.compute_integration_domains`,
+# and grouped by the degrees of their two cells.
+# A degree without cells has an empty submesh and space, so the forms are the same at every
+# iteration, and no process needs to know which degrees are used on the others.
 
 approach.update()
 for i, (submesh, _) in approach.submeshes.items():

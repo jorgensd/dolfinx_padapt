@@ -23,7 +23,7 @@ from mpi4py import MPI
 
 import pyvista
 
-from dolfinx_padapt import DegreeField, create_pacman
+from dolfinx_padapt import EigenvalueProblem, create_pacman
 from dolfinx_padapt.adaptivity import solve_adaptive
 from dolfinx_padapt.approaches import RestrictedApproach, SubmeshApproach
 from dolfinx_padapt.forms import Parameters
@@ -38,8 +38,7 @@ params = Parameters(pmin=1, pmax=6, continuous=True)
 # We run the adaptive loop with continuous spaces on the submeshes, and keep the final plot.
 
 # + tags=["scroll-output"]
-degrees = DegreeField(mesh, params.pmin, params.pmax)
-submesh_approach = SubmeshApproach(degrees, params)
+submesh_approach = SubmeshApproach(EigenvalueProblem(mesh), params)
 print_header()
 histories = {
     "submesh": solve_adaptive(submesh_approach, max_iterations=15, callback=print_iteration)
@@ -63,8 +62,7 @@ if plotter is not None:
 # owner.
 
 # + tags=["scroll-output"]
-degrees = DegreeField(mesh, params.pmin, params.pmax)
-restricted_approach = RestrictedApproach(degrees, params)
+restricted_approach = RestrictedApproach(EigenvalueProblem(mesh), params)
 print_header()
 histories["restricted"] = solve_adaptive(
     restricted_approach, max_iterations=15, callback=print_iteration

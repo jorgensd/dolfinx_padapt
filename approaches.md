@@ -9,11 +9,11 @@ implemented for the submesh approach.
 |---|---|---|---|
 | {py:class}`~dolfinx_padapt.approaches.SubmeshApproach` | One space per degree on the submesh of its cells, coupled through entity maps | Yes | [Submesh](demos/demo_submesh) |
 | {py:class}`~dolfinx_padapt.approaches.RestrictedApproach` | One space per degree on the whole mesh, with its dofmap restricted to the cells of that degree | Yes | [Restricted](demos/demo_restricted) |
-| {py:class}`~dolfinx_padapt.approaches.HierarchicalApproach` | Sub-matrices of a Legendre DG space of degree $p_{max}$, which is hierarchical on simplices {cite}`approaches-dubiner1991` | No | [Hierarchical](demos/demo_hierarchical) |
+| {py:class}`~dolfinx_padapt.approaches.HierarchicalApproach` | Sub-matrices of a Legendre DG space of degree $p_{max}$, which is hierarchical {cite}`approaches-dubiner1991` | No | [Hierarchical](demos/demo_hierarchical) |
 
 ## Submeshes (recommended)
 The forms are compiled with the space of each degree on a template domain. Every iteration
-extracts the submesh of each active degree with {py:func}`dolfinx.mesh.create_submesh`, and
+extracts the submesh of each degree with {py:func}`dolfinx.mesh.create_submesh`, and
 creates the forms over the parent mesh with the entity maps of the submeshes. The integrals over
 the interfaces between the degrees use the mixed-domain assembly of DOLFINx: a cell that is not
 part of a submesh is mapped to `-1`, and the assembler skips it.
@@ -32,11 +32,14 @@ dofmaps are made by hand:
   degrees of freedom) has to be done with care.
 
 ## A hierarchical basis
-A cell of degree $p_K$ keeps the first $\dim P_{p_K}$ degrees of freedom of a Legendre DG space of
-degree $p_{max}$, and the matrices are extracted with {py:meth}`petsc4py.PETSc.Mat.createSubMatrix`.
+A cell of degree $p_K$ keeps the first $\dim P_{p_K}$ (on quadrilaterals and hexahedra
+$\dim Q_{p_K}$) degrees of freedom of a DG space of degree $p_{max}$ with an orthonormal basis
+that is ordered by degree ({py:func}`~dolfinx_padapt.approaches.hierarchical_element`).
+The matrices are extracted with
+{py:meth}`petsc4py.PETSc.Mat.createSubMatrix`.
 With a fixed penalty $\sigma=\alpha p_{max}^2$, the matrices are only assembled once. However:
 
-- it is limited to discontinuous spaces on simplices,
+- it is limited to discontinuous spaces and scalar problems,
 - the operator of the maximal degree is assembled and stored on every cell,
 - every cell is integrated with the quadrature of the maximal degree,
 - with a degree dependent penalty, the matrices are assembled at every iteration.

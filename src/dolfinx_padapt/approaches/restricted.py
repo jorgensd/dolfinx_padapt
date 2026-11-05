@@ -74,27 +74,27 @@ class RestrictedApproach(BlockApproach):
     name = "restricted"
 
     def _ufl_spaces(self) -> dict[tuple[int, str], ufl.FunctionSpace]:
-        fields = self.problem.fields
+        fields = self._problem.fields
         if len(fields) != 1 or fields[0].shape != ():
             raise NotImplementedError(
                 "Restricted dofmaps are only implemented for scalar problems, use the submesh "
                 "approach"
             )
         # The parent spaces are both used for compilation and as the spaces to restrict
-        self.parent_spaces = {
-            key: dolfinx.fem.functionspace(self.mesh, el) for key, el in self.elements.items()
+        self._parent_spaces = {
+            key: dolfinx.fem.functionspace(self._mesh, el) for key, el in self._elements.items()
         }
-        return self.parent_spaces
+        return self._parent_spaces
 
-    def _create_spaces(self, active):
+    def _create_spaces(self, degrees):
         spaces = {}
-        for i in active:
-            cells = self.degrees.cells(i, include_ghosts=True)
+        for i in degrees:
+            cells = self._degrees.cells(i, include_ghosts=True)
             for name in self._field_names:
                 key = (i, name)
-                spaces[key], _ = restrict_function_space(self.parent_spaces[key], cells)
+                spaces[key], _ = restrict_function_space(self._parent_spaces[key], cells)
         return spaces, []
 
     def _interpolate(self, u, u_i, degree):
-        cells = self.degrees.cells(degree)
+        cells = self._degrees.cells(degree)
         u.interpolate(u_i, cells0=cells, cells1=cells)

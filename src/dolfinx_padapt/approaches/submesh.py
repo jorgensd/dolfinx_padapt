@@ -17,32 +17,37 @@ class SubmeshApproach(BlockApproach):
 
     name = "submesh"
 
+    @property
+    def submeshes(self) -> dict[int, tuple[dolfinx.mesh.Mesh, dolfinx.mesh.EntityMap]]:
+        """The submesh of each degree, and its map to the cells of the parent mesh."""
+        return self._submeshes
+
     def _ufl_spaces(self):
-        coordinate_element = self.mesh.ufl_domain().ufl_coordinate_element()
+        coordinate_element = self._mesh.ufl_domain().ufl_coordinate_element()
         # One template domain per degree, shared by the fields of that degree
-        domains = {i: ufl.Mesh(coordinate_element) for i in self.params.degrees}
+        domains = {i: ufl.Mesh(coordinate_element) for i in self._params.degrees}
         return {
             (i, name): ufl.FunctionSpace(domains[i], element)
-            for (i, name), element in self.elements.items()
+            for (i, name), element in self._elements.items()
         }
 
-    def _create_spaces(self, active):
-        tdim = self.mesh.topology.dim
-        self.submeshes = {}
+    def _create_spaces(self, degrees):
+        tdim = self._mesh.topology.dim
+        self._submeshes = {}
         spaces = {}
         entity_maps = []
-        for i in active:
-            cells = self.degrees.cells(i, include_ghosts=True)
-            submesh, cell_map, _, _ = dolfinx.mesh.create_submesh(self.mesh, tdim, cells)
-            self.submeshes[i] = (submesh, cell_map)
+        for i in degrees:
+            cells = self._degrees.cells(i, include_ghosts=True)
+            submesh, cell_map, _, _ = dolfinx.mesh.create_submesh(self._mesh, tdim, cells)
+            self._submeshes[i] = (submesh, cell_map)
             for name in self._field_names:
-                spaces[(i, name)] = dolfinx.fem.functionspace(submesh, self.elements[(i, name)])
+                spaces[(i, name)] = dolfinx.fem.functionspace(submesh, self._elements[(i, name)])
             entity_maps.append(cell_map)
         return spaces, entity_maps
 
     def _interpolate(self, u, u_i, degree):
-        tdim = self.mesh.topology.dim
-        submesh, cell_map = self.submeshes[degree]
+        tdim = self._mesh.topology.dim
+        submesh, cell_map = self._submeshes[degree]
         sub_cells = np.arange(submesh.topology.index_map(tdim).size_local, dtype=np.int32)
         parent_cells = cell_map.sub_topology_to_topology(sub_cells, inverse=False)
         u.interpolate(u_i, cells0=sub_cells, cells1=parent_cells)

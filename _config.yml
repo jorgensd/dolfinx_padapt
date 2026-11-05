@@ -47,7 +47,6 @@ sphinx:
       mpi4py: ["https://mpi4py.readthedocs.io/en/stable", null]
       numpy: ["https://numpy.org/doc/stable/", null]
       pyvista: ["https://docs.pyvista.org/", null]
-      scifem: ["https://scientificcomputing.github.io/scifem/", null]
       matplotlib: ["https://matplotlib.org/stable/", null]
 
   extra_extensions:

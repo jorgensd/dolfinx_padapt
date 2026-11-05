@@ -1,9 +1,8 @@
 # Getting started
 
 ## Installation
-`dolfinx_padapt` requires DOLFINx (the main branch, which will become v0.12) and
-[scifem](https://github.com/scientificcomputing/scifem) (>= 0.27). Both have C++ extensions, so
-they are built against the installed DOLFINx without build isolation:
+`dolfinx_padapt` is a pure Python package, which requires DOLFINx (the main branch, which will
+become v0.12) with PETSc and SLEPc, and GMSH. With these installed, run
 
 ```bash
 python3 -m pip install --no-build-isolation .

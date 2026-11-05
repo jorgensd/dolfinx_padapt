@@ -5,7 +5,6 @@ from mpi4py import MPI
 import dolfinx
 import numpy as np
 import numpy.typing as npt
-import scifem
 
 IntegrationEntities = dict[dolfinx.fem.IntegralType, list[tuple[int, npt.NDArray[np.int32]]]]
 
@@ -36,42 +35,67 @@ class DegreeField:
     """
 
     def __init__(self, mesh: dolfinx.mesh.Mesh, pmin: int, pmax: int):
-        self.mesh = mesh
+        self._mesh = mesh
         tdim = mesh.topology.dim
         mesh.topology.create_connectivity(tdim - 1, tdim)
         mesh.topology.create_connectivity(tdim, tdim - 1)
-        self.pmin = pmin
-        self.pmax = pmax
-        self.Q = dolfinx.fem.functionspace(mesh, ("DG", 0))
-        self.p = dolfinx.fem.Function(self.Q, name="p")
-        self.p.x.array[:] = pmin
-        self._cell_to_dof = self.Q.dofmap.list[:, 0]
+        self._pmin = pmin
+        self._pmax = pmax
+        self._Q = dolfinx.fem.functionspace(mesh, ("DG", 0))
+        self._p = dolfinx.fem.Function(self._Q, name="p")
+        self._p.x.array[:] = pmin
+        self._cell_to_dof = self._Q.dofmap.list[:, 0]
         self._update_tags()
 
     @property
+    def mesh(self) -> dolfinx.mesh.Mesh:
+        """The mesh."""
+        return self._mesh
+
+    @property
+    def pmin(self) -> int:
+        """The lowest degree."""
+        return self._pmin
+
+    @property
+    def pmax(self) -> int:
+        """The highest degree."""
+        return self._pmax
+
+    @property
+    def p(self) -> dolfinx.fem.Function:
+        """The degree of each cell as a DG-0 function."""
+        return self._p
+
+    @property
+    def ct(self) -> dolfinx.mesh.MeshTags:
+        """The degree of each cell as cell tags (owned and ghost cells)."""
+        return self._ct
+
+    @property
     def num_owned_cells(self) -> int:
-        return self.mesh.topology.index_map(self.mesh.topology.dim).size_local
+        return self._mesh.topology.index_map(self._mesh.topology.dim).size_local
 
     @property
     def cell_degrees(self) -> npt.NDArray[np.int32]:
         """Degree of every cell (owned and ghost) on the process."""
-        return self.ct.values
+        return self._ct.values
 
     def _update_tags(self):
-        self.p.x.scatter_forward()
+        self._p.x.scatter_forward()
         num_cells = len(self._cell_to_dof)
-        self.ct = dolfinx.mesh.meshtags(
-            self.mesh,
-            self.mesh.topology.dim,
+        self._ct = dolfinx.mesh.meshtags(
+            self._mesh,
+            self._mesh.topology.dim,
             np.arange(num_cells, dtype=np.int32),
-            np.rint(self.p.x.array[self._cell_to_dof]).astype(np.int32),
+            np.rint(self._p.x.array[self._cell_to_dof]).astype(np.int32),
         )
 
     def set_degrees(self, degrees: npt.NDArray[np.int32]):
         """Set the degree of all owned cells."""
         degrees = np.asarray(degrees)
-        assert np.all((self.pmin <= degrees) & (degrees <= self.pmax))
-        self.p.x.array[self._cell_to_dof[: self.num_owned_cells]] = degrees
+        assert np.all((self._pmin <= degrees) & (degrees <= self._pmax))
+        self._p.x.array[self._cell_to_dof[: self.num_owned_cells]] = degrees
         self._update_tags()
 
     def refine(self, cells: npt.NDArray[np.int32]) -> int:
@@ -105,24 +129,35 @@ class DegreeField:
 
         Returns:
             The number of cells (globally) whose degree changed.
+
+        Raises:
+            ValueError: If a cell is not owned by the process, or is both refined and coarsened
+                (on any process).
         """
-        old = self.p.x.array.copy()
+        # The checks are reduced before raising, such that all processes raise and none waits in
+        # a collective. A ghost cell would be counted as changed, and then be overwritten by its
+        # owner in the scatter.
+        num_owned = self.num_owned_cells
+        not_owned = any(np.any((cells < 0) | (cells >= num_owned)) for cells in (refine, coarsen))
+        overlap = np.intersect1d(refine, coarsen).size > 0
+        local = np.array([not_owned, overlap], dtype=np.int8)
+        flags = np.zeros_like(local)
+        self._mesh.comm.Allreduce(local, flags, op=MPI.MAX)
+        if flags[0]:
+            raise ValueError("Only the degree of owned cells can be changed")
+        if flags[1]:
+            raise ValueError("A cell cannot be both refined and coarsened")
+        old = self._p.x.array.copy()
+        refine = np.asarray(refine, dtype=np.int32)
+        coarsen = np.asarray(coarsen, dtype=np.int32)
         refine_dofs = self._cell_to_dof[refine]
         coarsen_dofs = self._cell_to_dof[coarsen]
-        self.p.x.array[refine_dofs] = np.minimum(old[refine_dofs] + 1, self.pmax)
-        self.p.x.array[coarsen_dofs] = np.maximum(old[coarsen_dofs] - 1, self.pmin)
+        self._p.x.array[refine_dofs] = np.minimum(old[refine_dofs] + 1, self._pmax)
+        self._p.x.array[coarsen_dofs] = np.maximum(old[coarsen_dofs] - 1, self._pmin)
         changed = np.union1d(refine_dofs, coarsen_dofs)
-        num_changed = int(np.sum(self.p.x.array[changed] != old[changed]))
+        num_changed = int(np.sum(self._p.x.array[changed] != old[changed]))
         self._update_tags()
-        return self.mesh.comm.allreduce(num_changed, op=MPI.SUM)
-
-    def active_degrees(self) -> list[int]:
-        """Degrees used by at least one cell on any process."""
-        local = np.zeros(self.pmax + 1, dtype=np.int32)
-        local[np.unique(self.cell_degrees[: self.num_owned_cells])] = 1
-        active = np.zeros_like(local)
-        self.mesh.comm.Allreduce(local, active, op=MPI.MAX)
-        return [int(d) for d in np.flatnonzero(active)]
+        return self._mesh.comm.allreduce(num_changed, op=MPI.SUM)
 
     def cells(self, degree: int, include_ghosts: bool = False) -> npt.NDArray[np.int32]:
         """Local indices of cells with the given degree."""
@@ -137,13 +172,24 @@ class DegreeField:
         - ``dS(pair_tag(i, j))``: facets between cells of degree ``i`` and ``j``, where the
           ``"+"`` restriction is the cell with the lowest degree.
 
-        The interface facets are found with :func:`scifem.find_interface`, and ordered with
-        :func:`scifem.compute_interface_data`.
+        The interior facets are computed once with
+        :func:`dolfinx.fem.compute_integration_domains`, and grouped by the degrees of their two
+        cells.
+
+        Args:
+            continuous: If ``True``, the facets between two cells of the same degree are left out
+                (no ``dS(pair_tag(i, i))``). With continuous spaces within each degree region, only
+                the interfaces between different degrees carry (Nitsche) coupling terms, as the
+                jumps vanish on the other facets. Must match the ``continuous`` parameter the forms
+                are compiled with (see :func:`degree_pairs`).
+
+        Raises:
+            ValueError: If the mesh is not ghosted with ``GhostMode.shared_facet``.
 
         Note:
             Collective. All tags are present on every process (possibly with no entities).
         """
-        topology = self.mesh.topology
+        topology = self._mesh.topology
         degrees = self.cell_degrees
         cell_type = dolfinx.fem.IntegralType.cell
         ext_type = dolfinx.fem.IntegralType.exterior_facet
@@ -153,28 +199,35 @@ class DegreeField:
         boundary = dolfinx.mesh.exterior_facet_indices(topology)
         ext = dolfinx.fem.compute_integration_domains(ext_type, topology, boundary)
         ext = ext.reshape(-1, 2)
-        for i in range(self.pmin, self.pmax + 1):
+        for i in range(self._pmin, self._pmax + 1):
             entities[cell_type].append((i, self.cells(i)))
             ext_i = ext[degrees[ext[:, 0]] == i]
             entities[ext_type].append((i, np.ascontiguousarray(ext_i.reshape(-1))))
 
-        # Interfaces between different degrees, "+" is the lowest degree
-        cross_facets = []
-        for i, j in degree_pairs(self.pmin, self.pmax, continuous=True):
-            facets = scifem.find_interface(self.ct, (i,), (j,))
-            cross_facets.append(facets)
-            data = scifem.compute_interface_data(self.ct, facets)
-            entities[int_type].append((pair_tag(i, j, self.pmax), data.reshape(-1)))
+        # All interior facets owned by this process. Both cells of such a facet must be on the
+        # process, which requires a mesh ghosted with GhostMode.shared_facet. Otherwise, an owned
+        # facet on the interface between two processes only has one (local) cell, and is not on
+        # the boundary.
+        tdim = topology.dim
+        f_to_c = topology.connectivity(tdim - 1, tdim)
+        num_owned_facets = topology.index_map(tdim - 1).size_local
+        num_cells = np.diff(f_to_c.offsets)[:num_owned_facets]
+        one_cell = np.flatnonzero(num_cells == 1)
+        not_ghosted = np.setdiff1d(one_cell, boundary).size > 0
+        if self._mesh.comm.allreduce(not_ghosted, op=MPI.LOR):
+            raise ValueError("Interior facet integrals require a mesh with GhostMode.shared_facet")
+        interior = np.flatnonzero(num_cells == 2).astype(np.int32)
+        data = dolfinx.fem.compute_integration_domains(int_type, topology, interior).reshape(-1, 4)
 
-        if not continuous:
-            # find_interface(ct, (i,), (i,)) returns all interior facets of the cells with
-            # degree i, also those shared with a cell of another degree.
-            all_cross = np.unique(np.concatenate(cross_facets)) if cross_facets else []
-            for i in range(self.pmin, self.pmax + 1):
-                facets = scifem.find_interface(self.ct, (i,), (i,))
-                facets = np.setdiff1d(facets, all_cross).astype(np.int32)
-                data = scifem.compute_interface_data(self.ct, facets)
-                entities[int_type].append((pair_tag(i, i, self.pmax), data.reshape(-1)))
+        # Each facet is (cell_0, local_facet_0, cell_1, local_facet_1). Put the cell with the
+        # lowest degree on the "+" side, and group the facets by the degrees of their cells.
+        swap = degrees[data[:, 0]] > degrees[data[:, 2]]
+        data[swap] = data[swap][:, [2, 3, 0, 1]]
+        degree_plus = degrees[data[:, 0]]
+        degree_minus = degrees[data[:, 2]]
+        for i, j in degree_pairs(self._pmin, self._pmax, continuous):
+            facets = data[(degree_plus == i) & (degree_minus == j)]
+            entities[int_type].append((pair_tag(i, j, self._pmax), facets.reshape(-1)))
 
         for integral_type in entities:
             entities[integral_type] = [

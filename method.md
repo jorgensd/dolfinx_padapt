@@ -17,7 +17,8 @@ indicator and the error measures. The library has the following problems:
   $\partial\Omega$, for a vector valued displacement.
 - {py:class}`dolfinx_padapt.problems.StokesProblem`: $-\nu\Delta u + \nabla p = f$,
   $\nabla\cdot u = 0$, $u = g$ on $\partial\Omega$, with a velocity of the degree of the cell and
-  a pressure of one degree less {cite}`method-schotzau2002`.
+  a pressure of one degree less {cite}`method-schotzau2002`, and a penalty on the jumps of the
+  pressure {cite}`method-cockburn2002`.
 
 The source problems use a manufactured solution $u_{ex}$, with $f$ and $g$ computed from it, such
 that the error can be measured. The problems with vector valued or several fields are only
@@ -61,12 +62,14 @@ Starting from degree $p_{min}$ on every cell, {py:func}`dolfinx_padapt.adaptivit
 3. computes the error indicator,
 4. marks cells, and increases their degree by one.
 
-The degree of each cell is stored as cell tags ({py:class}`dolfinx_padapt.degrees.DegreeField`),
+The degree of each cell is owned by the approach, within the range $[p_{min}, p_{max}]$ of its
+{py:class}`~dolfinx_padapt.forms.Parameters`, and stored as cell tags
+({py:class}`dolfinx_padapt.degrees.DegreeField`),
 where the value of a tag is the degree. Every integral gets a unique tag: $\mathrm{d}x(i)$ and
 $\mathrm{d}s(i)$ for the cells of degree $i$, and $\mathrm{d}S(i, j)$ for the facets between the
-cells of degree $i \leq j$. The interface facets are found with {py:func}`scifem.find_interface`, and
-{py:func}`scifem.compute_interface_data` orders each facet such that the cell with the lowest degree is the
-"+" restriction.
+cells of degree $i \leq j$. The interior facets are computed once with
+{py:func}`dolfinx.fem.compute_integration_domains`, and grouped by the degrees of their two cells,
+where the cell with the lowest degree is the "+" restriction.
 
 All forms, for every combination of degrees, are compiled once with
 {py:func}`dolfinx.fem.compile_form`, and every iteration only calls

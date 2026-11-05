@@ -1,5 +1,5 @@
 from .base import Approach
-from .hierarchical import HierarchicalApproach
+from .hierarchical import HierarchicalApproach, hierarchical_element
 from .restricted import RestrictedApproach, restrict_function_space
 from .submesh import SubmeshApproach
 
@@ -13,5 +13,6 @@ __all__ = [
     "HierarchicalApproach",
     "RestrictedApproach",
     "SubmeshApproach",
+    "hierarchical_element",
     "restrict_function_space",
 ]

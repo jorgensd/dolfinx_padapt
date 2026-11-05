@@ -30,6 +30,17 @@
 # + \int_{\partial\Omega} q\, v\cdot n~\mathrm{d}s.
 # $$
 #
+# When the velocity is under-resolved, the discontinuous pressure can oscillate between the cells
+# around a vertex. The jumps of the pressure are therefore penalised on the interior facets
+# {cite}`stokes-cockburn2002`,
+#
+# $$
+# c(p, q) = \sum_F \int_F \gamma_p\frac{h}{\nu}[p][q]~\mathrm{d}s,
+# $$
+#
+# which is subtracted from the continuity equation, with $\gamma_p=1$ by default
+# (`pressure_stabilisation`). The exact pressure has no jumps, so the method stays consistent.
+#
 # With a Dirichlet condition on the whole boundary, the pressure is only determined up to a
 # constant. The approach gives the constant pressure as the nullspace of the matrix
 # ({py:meth}`~dolfinx_padapt.approaches.Approach.nullspace`), and the error of the pressure is
@@ -42,7 +53,6 @@ import dolfinx
 import pyvista
 import ufl
 
-from dolfinx_padapt import DegreeField
 from dolfinx_padapt.adaptivity import solve_adaptive
 from dolfinx_padapt.approaches import SubmeshApproach
 from dolfinx_padapt.forms import Parameters
@@ -73,10 +83,9 @@ problem = StokesProblem(mesh, u_exact, p_exact, viscosity=1.0)
 
 # + tags=["scroll-output"]
 params = Parameters(pmin=1, pmax=5)
-degrees = DegreeField(mesh, params.pmin, params.pmax)
-approach = SubmeshApproach(degrees, params, problem)
+approach = SubmeshApproach(problem, params)
 with Animation(mesh.comm, "stokes.gif") as animation:
-    history = solve_adaptive(approach, max_iterations=20, tol=1e-4, callback=animation)
+    history = solve_adaptive(approach, max_iterations=20, tol=1e-2, callback=animation)
 # -
 
 # <img src="./stokes.gif" alt="gif" class="bg-primary mb-1" width="100%">

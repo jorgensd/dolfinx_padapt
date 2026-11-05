@@ -3,15 +3,21 @@ implementation on a single space (uniform degree)."""
 
 from mpi4py import MPI
 
+import basix
 import dolfinx
 import dolfinx.fem.petsc
 import numpy as np
 import pytest
 import ufl
 
-from dolfinx_padapt import DegreeField, PoissonProblem, create_pacman
-from dolfinx_padapt.adaptivity import MarkingStrategy, mark_cells, mark_cells_for_coarsening
-from dolfinx_padapt.approaches import APPROACHES
+from dolfinx_padapt import DegreeField, EigenvalueProblem, PoissonProblem, create_pacman
+from dolfinx_padapt.adaptivity import (
+    MarkingStrategy,
+    degree_histogram,
+    mark_cells,
+    mark_cells_for_coarsening,
+)
+from dolfinx_padapt.approaches import APPROACHES, hierarchical_element
 from dolfinx_padapt.eigen import solve_eigenproblem
 from dolfinx_padapt.forms import (
     Parameters,
@@ -38,9 +44,9 @@ def solve(name, mesh, params, owned_degrees, problem=None):
 
 
 def solve_all(name, mesh, params, owned_degrees, problem=None):
-    degrees = DegreeField(mesh, params.pmin, params.pmax)
-    degrees.set_degrees(owned_degrees)
-    approach = APPROACHES[name](degrees, params, problem)
+    problem = problem if problem is not None else EigenvalueProblem(mesh)
+    approach = APPROACHES[name](problem, params)
+    approach.degrees.set_degrees(owned_degrees)
     approach.update()
     A, B = approach.assemble()
     x = approach.problem.solve(A, B, approach.nullspace())
@@ -106,7 +112,7 @@ def test_uniform_degree_cg(mesh, name, k):
 def test_hierarchical_rejects_cg(mesh):
     params = Parameters(pmin=1, pmax=PMAX, continuous=True)
     with pytest.raises(NotImplementedError):
-        APPROACHES["hierarchical"](DegreeField(mesh, 1, PMAX), params)
+        APPROACHES["hierarchical"](EigenvalueProblem(mesh), params)
 
 
 @pytest.mark.parametrize("penalty", ["local", "global"])
@@ -154,7 +160,7 @@ def test_refine(mesh):
     assert changed == mesh.comm.allreduce(len(cells), op=MPI.SUM)
     assert np.all(degrees.cell_degrees[cells] == 2)
     assert degrees.refine(cells) == 0  # Capped at pmax
-    assert 2 in degrees.active_degrees()
+    assert degree_histogram(degrees)[2] == mesh.comm.allreduce(len(cells), op=MPI.SUM)
 
 
 @pytest.mark.parametrize("strategy", list(MarkingStrategy))
@@ -182,11 +188,15 @@ def cube():
 
 
 def quadratic(x):
-    return 1 + x[0] ** 2 + 2 * x[1] * x[2] - x[2] ** 2
+    # In 2D and 3D
+    last = x[x.ufl_shape[0] - 1]
+    return 1 + x[0] ** 2 + 2 * x[1] * last - last**2
 
 
 def bump(x):
-    return ufl.exp(-10 * ((x[0] - 0.3) ** 2 + (x[1] - 0.4) ** 2 + (x[2] - 0.6) ** 2))
+    # In 2D and 3D
+    centre = (0.3, 0.4, 0.6)
+    return ufl.exp(-10 * sum((x[i] - centre[i]) ** 2 for i in range(x.ufl_shape[0])))
 
 
 @pytest.mark.parametrize("continuous", [False, True])
@@ -278,6 +288,31 @@ def test_coarsen(mesh):
     assert mark_cells_for_coarsening(np.zeros(num_owned), 0.1, degrees).size == 0
 
 
+def test_change_overlap(mesh):
+    """A cell cannot be both refined and coarsened. The overlap is only on one process, but all
+    processes raise."""
+    degrees = DegreeField(mesh, 1, 3)
+    degrees.set_degrees(np.full(owned_cells(mesh), 2, dtype=np.int32))
+    cells = np.arange(min(3, owned_cells(mesh)), dtype=np.int32)
+    coarsen = cells if mesh.comm.rank == 0 else np.empty(0, dtype=np.int32)
+    with pytest.raises(ValueError):
+        degrees.change(cells, coarsen)
+    assert np.all(degrees.cell_degrees == 2)  # Nothing changed
+
+
+def test_change_not_owned(mesh):
+    """Only owned cells can be changed (a ghost cell would be overwritten in the scatter)."""
+    degrees = DegreeField(mesh, 1, 3)
+    num_owned = owned_cells(mesh)
+    # The first ghost cell (or past the last cell in serial), only on process 0
+    cells = np.array([num_owned] if mesh.comm.rank == 0 else [], dtype=np.int32)
+    with pytest.raises(ValueError):
+        degrees.refine(cells)
+    with pytest.raises(ValueError):
+        degrees.coarsen(np.array([-1], dtype=np.int32))
+    assert np.all(degrees.cell_degrees == 1)
+
+
 # Linear elasticity and Stokes (submesh approach only)
 
 
@@ -348,4 +383,100 @@ def test_vector_problems_require_submesh(square, name):
     params = Parameters(pmin=1, pmax=2)
     problem = ElasticityProblem(square, quadratic_displacement)
     with pytest.raises(NotImplementedError):
-        APPROACHES[name](DegreeField(square, 1, 2), params, problem)
+        APPROACHES[name](problem, params)
+
+
+# Quadrilaterals and hexahedra
+
+
+@pytest.fixture(scope="module", params=["quadrilateral", "hexahedron"])
+def tensor_mesh(request):
+    if request.param == "quadrilateral":
+        return dolfinx.mesh.create_unit_square(
+            MPI.COMM_WORLD, 3, 3, cell_type=dolfinx.mesh.CellType.quadrilateral
+        )
+    return dolfinx.mesh.create_unit_cube(
+        MPI.COMM_WORLD, 2, 2, 2, cell_type=dolfinx.mesh.CellType.hexahedron
+    )
+
+
+@pytest.mark.parametrize("name", APPROACHES.keys())
+@pytest.mark.parametrize("k", [1, 2])
+def test_tensor_cells_uniform_degree(tensor_mesh, name, k):
+    params = Parameters(pmin=1, pmax=2, quadrature_degree=QDEG)
+    problem = PoissonProblem(tensor_mesh, bump)
+    degrees = np.full(owned_cells(tensor_mesh), k, np.int32)
+    values, _, _ = solve_all(name, tensor_mesh, params, degrees, problem)
+    reference = poisson_reference(tensor_mesh, k, params.alpha, bump)
+    assert np.isclose(values["L2"], reference, rtol=1e-8)
+
+
+def test_tensor_cells_mixed_degrees(tensor_mesh):
+    params = Parameters(pmin=1, pmax=2, quadrature_degree=QDEG)
+    problem = PoissonProblem(tensor_mesh, bump)
+    degrees = pseudo_random_degrees(tensor_mesh, params.pmin, params.pmax)
+    results = {name: solve_all(name, tensor_mesh, params, degrees, problem) for name in APPROACHES}
+    values0, eta0, ndofs0 = results["submesh"]
+    for name, (values, eta, ndofs) in results.items():
+        assert ndofs == ndofs0, name
+        for key in ("L2", "H1"):
+            assert np.isclose(values[key], values0[key], rtol=1e-8), (name, key)
+        assert np.isclose(eta, eta0, rtol=1e-8), name
+
+
+def test_tensor_cells_hierarchical_exact(tensor_mesh):
+    """A quadratic solution is reproduced on any distribution of degrees >= 2."""
+    params = Parameters(pmin=2, pmax=3, quadrature_degree=6)
+    problem = PoissonProblem(tensor_mesh, quadratic)
+    degrees = pseudo_random_degrees(tensor_mesh, params.pmin, params.pmax)
+    values, _, _ = solve_all("hierarchical", tensor_mesh, params, degrees, problem)
+    assert values["L2"] < 1e-10
+    assert values["H1"] < 1e-9
+
+
+def test_interior_facets_require_shared_facet_ghosting():
+    """Without ghost cells, an owned interior facet on the process boundary has a single cell."""
+    mesh = dolfinx.mesh.create_unit_square(
+        MPI.COMM_WORLD, 4, 4, ghost_mode=dolfinx.mesh.GhostMode.none
+    )
+    degrees = DegreeField(mesh, 1, 2)
+    if mesh.comm.size == 1:
+        degrees.integration_entities()
+    else:
+        with pytest.raises(ValueError):
+            degrees.integration_entities()
+
+
+@pytest.mark.parametrize(
+    "cell",
+    [
+        basix.CellType.triangle,
+        basix.CellType.tetrahedron,
+        basix.CellType.quadrilateral,
+        basix.CellType.hexahedron,
+    ],
+)
+def test_hierarchical_element(cell):
+    """The first dims[k] basis functions span the Legendre element of degree k."""
+    pmax = 3
+    element, dims = hierarchical_element(cell, pmax)
+    points, weights = basix.make_quadrature(cell, 2 * pmax)
+    phi = element.tabulate(0, points)[0]
+    for k in range(pmax + 1):
+        reference = basix.create_element(
+            basix.ElementFamily.P, cell, k, basix.LagrangeVariant.legendre, discontinuous=True
+        )
+        psi = reference.tabulate(0, points)[0, :, :, 0]
+        assert dims[k] == psi.shape[1]
+        # Both bases are orthonormal: the projection onto the first dims[k] functions is exact
+        coefficients = phi[:, : dims[k]].T @ (weights[:, None] * psi)
+        assert np.allclose(phi[:, : dims[k]] @ coefficients, psi)
+
+
+def test_approach_owns_degrees(mesh):
+    """The degrees of an approach are within the degrees of its parameters."""
+    params = Parameters(pmin=2, pmax=3)
+    approach = APPROACHES["submesh"](EigenvalueProblem(mesh), params)
+    assert approach.mesh is mesh
+    assert (approach.degrees.pmin, approach.degrees.pmax) == (2, 3)
+    assert np.all(approach.degrees.cell_degrees == 2)

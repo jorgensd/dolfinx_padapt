@@ -19,7 +19,7 @@ The documentation, with the method, the demos and a comparison of the approaches
 
 ## Installation
 
-Requires DOLFINx and [scifem](https://github.com/scientificcomputing/scifem) (>= 0.27).
+Requires DOLFINx (with PETSc and SLEPc) and GMSH.
 
 ```bash
 python3 -m pip install --no-build-isolation .[docs,test]

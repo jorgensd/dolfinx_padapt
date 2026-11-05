@@ -1,6 +1,6 @@
 """Visualise a P-adaptive solution with PyVista, and the convergence with Matplotlib.
 
-For every active degree ``i``, the solution is interpolated onto a DG-``i`` Lagrange space on a
+For every degree ``i``, the solution is interpolated onto a DG-``i`` Lagrange space on a
 submesh of the cells with degree ``i``, and converted to a PyVista grid. The grids of every
 process are gathered on one process (as in the ``amr.py`` demo of the DOLFINx tutorial) and drawn
 in a single plot: the solution with iso-lines, the cell edges, and the nodes of each space (as
@@ -53,7 +53,7 @@ def create_grids(
         Collective.
 
     Returns:
-        For each active degree: the solution on a Lagrange grid of that degree and the nodes of
+        For each degree: the solution on a Lagrange grid of that degree and the nodes of
         that grid. Also returns the (curved) edges of the owned cells.
     """
     mesh = approach.mesh
@@ -65,7 +65,7 @@ def create_grids(
     approach.interpolate_solution(u_parent)
 
     solutions, nodes = {}, {}
-    for i in degrees.active_degrees():
+    for i in range(degrees.pmin, degrees.pmax + 1):
         submesh, cell_map, _, _ = dolfinx.mesh.create_submesh(mesh, tdim, degrees.cells(i))
         V = dolfinx.fem.functionspace(submesh, ("DG", i))
         u = dolfinx.fem.Function(V)
@@ -557,31 +557,35 @@ class Animation:
         verbose: bool = True,
         **kwargs,
     ):
-        self.root = root
-        self.verbose = verbose
-        self.kwargs = kwargs
-        self.plotter = None
+        self._root = root
+        self._verbose = verbose
+        self._kwargs = kwargs
+        self._plotter = None
         if comm.rank == root:
-            self.plotter = pyvista.Plotter(
+            self._plotter = pyvista.Plotter(
                 shape=(1, 2), border=False, window_size=list(window_size)
             )
-            self.plotter.open_gif(filename, fps=fps)
+            self._plotter.open_gif(filename, fps=fps)
         if verbose:
             print_header()
 
     def __call__(self, approach: Approach, result: IterationResult):
-        if self.verbose:
+        if self._verbose:
             print_iteration(approach, result)
         plotter = plot_iteration(
-            approach, self.plotter, self.root, title=f"Iteration {result.iteration}", **self.kwargs
+            approach,
+            self._plotter,
+            self._root,
+            title=f"Iteration {result.iteration}",
+            **self._kwargs,
         )
         if plotter is not None:
             plotter.write_frame()
 
     def close(self):
-        if self.plotter is not None:
-            self.plotter.close()
-            self.plotter = None
+        if self._plotter is not None:
+            self._plotter.close()
+            self._plotter = None
 
     def __enter__(self):
         return self

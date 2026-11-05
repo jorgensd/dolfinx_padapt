@@ -19,7 +19,7 @@
 # +
 from mpi4py import MPI
 
-from dolfinx_padapt import DegreeField, create_pacman
+from dolfinx_padapt import EigenvalueProblem, create_pacman
 from dolfinx_padapt.adaptivity import solve_adaptive
 from dolfinx_padapt.approaches import APPROACHES
 from dolfinx_padapt.forms import Parameters
@@ -31,8 +31,7 @@ params = Parameters(pmin=1, pmax=6, penalty="global")
 
 histories = {}
 for name, Approach in APPROACHES.items():
-    degrees = DegreeField(mesh, params.pmin, params.pmax)
-    approach = Approach(degrees, params)
+    approach = Approach(EigenvalueProblem(mesh), params)
     histories[name] = solve_adaptive(approach, max_iterations=15)
 # -
 
@@ -56,12 +55,12 @@ if mesh.comm.rank == 0:
 # - **Submeshes** use the mixed-domain assembly of DOLFINx: the integrals over the
 #   interfaces are taken over the parent mesh and couple the submeshes through their entity maps.
 #   They support both discontinuous and continuous spaces with the same code, and the number of
-#   degrees of freedom and the quadrature follow the active degrees.
+#   degrees of freedom and the quadrature follow the degree of each cell.
 # - **Restricted dofmaps** give the same results, but rely on hand made dofmaps whose rows outside
 #   the restriction are not valid, need the neighbour trick for the kernels on the interfaces, and
 #   keep the full dofmap of every degree on the whole mesh.
 # - **A hierarchical basis** only assembles its matrices once with a fixed penalty, but is limited to
-#   discontinuous spaces on simplices, stores the operator of the maximal degree on the whole mesh,
+#   discontinuous spaces and scalar problems, stores the operator of the maximal degree on the whole mesh,
 #   and integrates every cell with the quadrature of the maximal degree.
 #
 # We recommend the submesh approach.

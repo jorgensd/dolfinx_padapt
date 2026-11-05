@@ -104,21 +104,21 @@ class SolutionWriter:
     ):
         mesh = approach.mesh
         fields = {f.name: f for f in approach.problem.fields}
-        self.field = field or next(iter(fields))
+        self._field = field or next(iter(fields))
         name = name or approach.name
         folder = Path(folder)
         folder.mkdir(parents=True, exist_ok=True)
         element = basix.ufl.element(
             "DG",
             mesh.basix_cell(),
-            max(fields[self.field].degree(approach.degrees.pmax), 1),
+            max(fields[self._field].degree(approach.degrees.pmax), 1),
             basix.LagrangeVariant.equispaced,
-            shape=fields[self.field].shape,
+            shape=fields[self._field].shape,
         )
-        self.u = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, element), name=self.field)
+        self._u = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, element), name=self._field)
         self._writers = [
             dolfinx.io.VTXWriter(
-                mesh.comm, folder / f"{name}_{self.field}.bp", [self.u], engine="BP4"
+                mesh.comm, folder / f"{name}_{self._field}.bp", [self._u], engine="BP4"
             ),
             dolfinx.io.VTXWriter(
                 mesh.comm, folder / f"{name}_degrees.bp", [approach.degrees.p], engine="BP4"
@@ -128,7 +128,7 @@ class SolutionWriter:
     def __call__(self, approach: Approach, result: IterationResult):
         """Write the current solution (can be used as a callback of
         :func:`dolfinx_padapt.adaptivity.solve_adaptive`)."""
-        approach.interpolate_solution(self.u, self.field)
+        approach.interpolate_solution(self._u, self._field)
         for writer in self._writers:
             writer.write(float(result.iteration))
 

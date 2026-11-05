@@ -19,7 +19,7 @@ The library provides three representations of a space with a cell-wise degree:
 
 **We recommend the submesh approach.** It uses the mixed-domain assembly of DOLFINx, supports
 discontinuous and continuous spaces with the same code, and both the number of degrees of freedom
-and the quadrature follow the active degrees. See [the approaches](approaches.md) for the
+and the quadrature follow the degree of each cell. See [the approaches](approaches.md) for the
 trade-offs.
 
 The main model problem is the Laplace eigenvalue problem on the PacMan domain of the

@@ -69,9 +69,19 @@ class Problem(abc.ABC):
     nullspace_fields: tuple[str, ...] = ()
 
     def __init__(self, mesh: dolfinx.mesh.Mesh):
-        self.mesh = mesh
-        self.x = ufl.SpatialCoordinate(mesh)
-        self.fields: tuple[Field, ...] = (Field("u"),)
+        self._mesh = mesh
+        self._x = ufl.SpatialCoordinate(mesh)
+        self._fields: tuple[Field, ...] = (Field("u"),)
+
+    @property
+    def mesh(self) -> dolfinx.mesh.Mesh:
+        """The mesh."""
+        return self._mesh
+
+    @property
+    def fields(self) -> tuple[Field, ...]:
+        """The fields of the problem."""
+        return self._fields
 
     @property
     def constants(self) -> list[dolfinx.fem.Constant]:
@@ -196,24 +206,24 @@ class EigenvalueProblem(LaplaceProblem):
 
     def __init__(self, mesh: dolfinx.mesh.Mesh, exact: float = EXACT_EIGENVALUE):
         super().__init__(mesh)
-        self.exact = exact
-        self.eigenvalue = dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(0.0))
+        self._exact = exact
+        self._eigenvalue = dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(0.0))
 
     @property
     def constants(self):
-        return [self.eigenvalue]
+        return [self._eigenvalue]
 
     def source(self, u):
-        return self.eigenvalue * u
+        return self._eigenvalue * u
 
     def solve(self, A, B, nullspace=None):
         lam, x = solve_eigenproblem(A, B)
-        self.eigenvalue.value = lam
+        self._eigenvalue.value = lam
         return x
 
     def errors(self, integrals):
-        lam = float(self.eigenvalue.value)
-        return abs(lam - self.exact) / self.exact, {"lambda": lam}
+        lam = float(self._eigenvalue.value)
+        return abs(lam - self._exact) / self._exact, {"lambda": lam}
 
 
 class PoissonProblem(LaplaceProblem):
@@ -227,17 +237,17 @@ class PoissonProblem(LaplaceProblem):
 
     def __init__(self, mesh: dolfinx.mesh.Mesh, exact_solution: ExactSolution):
         super().__init__(mesh)
-        self.u_exact = exact_solution(self.x)
-        self.f = -ufl.div(ufl.grad(self.u_exact))
+        self._u_exact = exact_solution(self._x)
+        self._f = -ufl.div(ufl.grad(self._u_exact))
 
     def source(self, u):
-        return self.f
+        return self._f
 
     def boundary_value(self):
-        return self.u_exact
+        return self._u_exact
 
     def error_integrands(self, u):
-        e = u["u"] - self.u_exact
+        e = u["u"] - self._u_exact
         return {"L2": e**2, "H1": ufl.inner(ufl.grad(e), ufl.grad(e))}
 
     def solve(self, A, B, nullspace=None):
@@ -269,46 +279,46 @@ class ElasticityProblem(Problem):
         lmbda: float = 1.0,
     ):
         super().__init__(mesh)
-        self.fields = (Field("u", (mesh.geometry.dim,)),)
-        self.mu = mu
-        self.lmbda = lmbda
-        self.kappa = 2 * mu + lmbda
-        self.u_exact = exact_solution(self.x)
-        self.f = -ufl.div(self.stress(self.u_exact))
+        self._fields = (Field("u", (mesh.geometry.dim,)),)
+        self._mu = mu
+        self._lmbda = lmbda
+        self._kappa = 2 * mu + lmbda
+        self._u_exact = exact_solution(self._x)
+        self._f = -ufl.div(self.stress(self._u_exact))
 
     def stress(self, u: Expr) -> Expr:
         eps = ufl.sym(ufl.grad(u))
-        return 2 * self.mu * eps + self.lmbda * ufl.tr(eps) * ufl.Identity(len(u))
+        return 2 * self._mu * eps + self._lmbda * ufl.tr(eps) * ufl.Identity(len(u))
 
     def residual(self, u, v, n, h, sigma, dx, ds):
         u, v = u["u"], v["u"]
-        F = ufl.inner(self.stress(u), ufl.grad(v)) * dx - ufl.inner(self.f, v) * dx
-        F += nitsche_boundary(u, v, n, h, self.kappa * sigma, self.u_exact, self.stress) * ds
+        F = ufl.inner(self.stress(u), ufl.grad(v)) * dx - ufl.inner(self._f, v) * dx
+        F += nitsche_boundary(u, v, n, h, self._kappa * sigma, self._u_exact, self.stress) * ds
         return F
 
     def interface(self, u_p, u_m, v_p, v_m, n, h, sigma, dS):
         terms = sipg_interior(
-            u_p["u"], u_m["u"], v_p["u"], v_m["u"], n, h, self.kappa * sigma, self.stress
+            u_p["u"], u_m["u"], v_p["u"], v_m["u"], n, h, self._kappa * sigma, self.stress
         )
         return terms * dS
 
     def estimator(self, u, h, p, gamma, w, dx, ds):
         u = u["u"]
-        r = self.f + ufl.div(self.stress(u))
+        r = self._f + ufl.div(self.stress(u))
         cell = (h / p) ** 2 * ufl.inner(r, r) * w
-        e = u - self.u_exact
-        boundary = (self.kappa * gamma) ** 2 * p**3 / h * ufl.inner(e, e) * w
+        e = u - self._u_exact
+        boundary = (self._kappa * gamma) ** 2 * p**3 / h * ufl.inner(e, e) * w
         return cell * dx + boundary * ds
 
     def estimator_interface(self, u_p, u_m, n, h, p_p, p_m, gamma, w, dS):
         u_p, u_m = u_p["u"], u_m["u"]
         flux_jump = ufl.dot(self.stress(u_p)("+"), n("+")) + ufl.dot(self.stress(u_m)("-"), n("-"))
         value_jump = u_p("+") - u_m("-")
-        weight = (self.kappa * gamma) ** 2
+        weight = (self._kappa * gamma) ** 2
         return estimator_jumps(flux_jump, value_jump, h, p_p, p_m, weight, w) * dS
 
     def error_integrands(self, u):
-        e = u["u"] - self.u_exact
+        e = u["u"] - self._u_exact
         return {"L2": ufl.inner(e, e), "H1": ufl.inner(ufl.grad(e), ufl.grad(e))}
 
     def solve(self, A, B, nullspace=None):
@@ -325,6 +335,10 @@ class StokesProblem(Problem):
 
     The velocity has the degree of the cell, and the pressure one degree less. The pressure is
     only determined up to a constant, which is removed from the solution and the error.
+    The jumps of the pressure are penalised on interior facets by
+    ``-pressure_stabilisation * h / ν * [p][q]`` (Cockburn, Kanschat, Schötzau and Schwab, 2002),
+    which removes spurious pressure oscillations when the velocity is under-resolved. As the exact
+    pressure has no jumps, the method stays consistent.
 
     Args:
         mesh: The mesh.
@@ -332,6 +346,7 @@ class StokesProblem(Problem):
             coordinate.
         exact_pressure: The manufactured pressure as a function of the spatial coordinate.
         viscosity: The viscosity ν.
+        pressure_stabilisation: Parameter of the pressure jump penalty (0 to disable it).
     """
 
     nullspace_fields = ("p",)
@@ -342,39 +357,45 @@ class StokesProblem(Problem):
         exact_velocity: ExactSolution,
         exact_pressure: ExactSolution,
         viscosity: float = 1.0,
+        pressure_stabilisation: float = 1.0,
     ):
         super().__init__(mesh)
-        self.fields = (Field("u", (mesh.geometry.dim,)), Field("p", (), -1))
-        self.nu = viscosity
-        self.u_exact = exact_velocity(self.x)
-        self.p_exact = exact_pressure(self.x)
-        self.f = -self.nu * ufl.div(ufl.grad(self.u_exact)) + ufl.grad(self.p_exact)
+        self._fields = (Field("u", (mesh.geometry.dim,)), Field("p", (), -1))
+        self._nu = viscosity
+        self._gamma_p = pressure_stabilisation
+        self._u_exact = exact_velocity(self._x)
+        self._p_exact = exact_pressure(self._x)
+        self._f = -self._nu * ufl.div(ufl.grad(self._u_exact)) + ufl.grad(self._p_exact)
 
     def residual(self, u, v, n, h, sigma, dx, ds):
         u, p = u["u"], u["p"]
         v, q = v["u"], v["p"]
-        g = self.u_exact
-        F = self.nu * ufl.inner(ufl.grad(u), ufl.grad(v)) * dx
-        F += -p * ufl.div(v) * dx - q * ufl.div(u) * dx - ufl.inner(self.f, v) * dx
-        F += self.nu * nitsche_boundary(u, v, n, h, sigma, g) * ds
+        g = self._u_exact
+        F = self._nu * ufl.inner(ufl.grad(u), ufl.grad(v)) * dx
+        F += -p * ufl.div(v) * dx - q * ufl.div(u) * dx - ufl.inner(self._f, v) * dx
+        F += self._nu * nitsche_boundary(u, v, n, h, sigma, g) * ds
         F += p * ufl.dot(v, n) * ds + q * ufl.dot(u - g, n) * ds
         return F
 
     def interface(self, u_p, u_m, v_p, v_m, n, h, sigma, dS):
-        terms = self.nu * sipg_interior(u_p["u"], u_m["u"], v_p["u"], v_m["u"], n, h, sigma)
+        terms = self._nu * sipg_interior(u_p["u"], u_m["u"], v_p["u"], v_m["u"], n, h, sigma)
         terms += average(u_p["p"], u_m["p"]) * normal_jump(v_p["u"], v_m["u"], n)
         terms += average(v_p["p"], v_m["p"]) * normal_jump(u_p["u"], u_m["u"], n)
+        if self._gamma_p > 0:
+            p_jump = u_p["p"]("+") - u_m["p"]("-")
+            q_jump = v_p["p"]("+") - v_m["p"]("-")
+            terms -= self._gamma_p * ufl.avg(h) / self._nu * p_jump * q_jump
         return terms * dS
 
     def _flux(self, u, p):
-        return self.nu * ufl.grad(u) - p * ufl.Identity(len(u))
+        return self._nu * ufl.grad(u) - p * ufl.Identity(len(u))
 
     def estimator(self, u, h, p, gamma, w, dx, ds):
         u_h, p_h = u["u"], u["p"]
-        r = self.f + self.nu * ufl.div(ufl.grad(u_h)) - ufl.grad(p_h)
+        r = self._f + self._nu * ufl.div(ufl.grad(u_h)) - ufl.grad(p_h)
         cell = ((h / p) ** 2 * ufl.inner(r, r) + ufl.div(u_h) ** 2) * w
-        e = u_h - self.u_exact
-        boundary = (self.nu * gamma) ** 2 * p**3 / h * ufl.inner(e, e) * w
+        e = u_h - self._u_exact
+        boundary = (self._nu * gamma) ** 2 * p**3 / h * ufl.inner(e, e) * w
         return cell * dx + boundary * ds
 
     def estimator_interface(self, u_p, u_m, n, h, p_p, p_m, gamma, w, dS):
@@ -382,12 +403,19 @@ class StokesProblem(Problem):
             self._flux(u_m["u"], u_m["p"])("-"), n("-")
         )
         value_jump = u_p["u"]("+") - u_m["u"]("-")
-        weight = (self.nu * gamma) ** 2
-        return estimator_jumps(flux_jump, value_jump, h, p_p, p_m, weight, w) * dS
+        weight = (self._nu * gamma) ** 2
+        eta = estimator_jumps(flux_jump, value_jump, h, p_p, p_m, weight, w)
+        if self._gamma_p > 0:
+            # The pressure jumps that are penalised by the stabilisation
+            p_jump = u_p["p"]("+") - u_m["p"]("-")
+            eta += (
+                self._gamma_p / self._nu * (p_jump / 2) ** 2 * (h("+") * w("+") + h("-") * w("-"))
+            )
+        return eta * dS
 
     def error_integrands(self, u):
-        e_u = u["u"] - self.u_exact
-        e_p = u["p"] - self.p_exact
+        e_u = u["u"] - self._u_exact
+        e_p = u["p"] - self._p_exact
         return {
             "u_H1": ufl.inner(ufl.grad(e_u), ufl.grad(e_u)),
             "u_L2": ufl.inner(e_u, e_u),

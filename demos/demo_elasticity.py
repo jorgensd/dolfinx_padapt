@@ -37,7 +37,6 @@ import dolfinx
 import numpy as np
 import ufl
 
-from dolfinx_padapt import DegreeField
 from dolfinx_padapt.adaptivity import solve_adaptive
 from dolfinx_padapt.approaches import SubmeshApproach
 from dolfinx_padapt.forms import Parameters
@@ -75,8 +74,8 @@ problem = ElasticityProblem(mesh, u_exact, mu=1.0, lmbda=10.0)
 
 # + tags=["scroll-output"]
 params = Parameters(pmin=1, pmax=5)
-degrees = DegreeField(mesh, params.pmin, params.pmax)
-approach = SubmeshApproach(degrees, params, problem)
+approach = SubmeshApproach(problem, params)
+degrees = approach.degrees
 with Animation(mesh.comm, "elasticity.gif") as animation:
     history = solve_adaptive(approach, max_iterations=12, tol=1e-4, callback=animation)
 # -

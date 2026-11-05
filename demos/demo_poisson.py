@@ -50,7 +50,7 @@ import dolfinx
 import numpy as np
 import ufl
 
-from dolfinx_padapt import DegreeField, PoissonProblem
+from dolfinx_padapt import PoissonProblem
 from dolfinx_padapt.adaptivity import solve_adaptive
 from dolfinx_padapt.approaches import SubmeshApproach
 from dolfinx_padapt.forms import Parameters
@@ -91,8 +91,8 @@ PETSc.Sys.Print(f"Number of cells: {num_cells}")
 # the bump (left), and the number of cells of each degree (right).
 
 params = Parameters(pmin=1, pmax=4)
-degrees = DegreeField(mesh, params.pmin, params.pmax)
-approach = SubmeshApproach(degrees, params, problem)
+approach = SubmeshApproach(problem, params)
+degrees = approach.degrees
 
 # + tags=["scroll-output"]
 with Animation(mesh.comm, "poisson.gif", origin=(0.3, 0.4, 0.6)) as animation:
@@ -114,8 +114,9 @@ for k in range(params.pmin, params.pmax + 1):
 # -
 
 # ## Coarsening
-# The degree can also be lowered where the error is small. We start from degree 3 on every cell,
-# and at every iteration also lower the degree (never below $p_{min}$) of the cells with
+# The degree can also be lowered where the error is small. To see the effect of coarsening, we
+# start two runs from degree 3 on every cell: one that only increases the degree, and one that at
+# every iteration also lowers the degree (never below $p_{min}$) of the cells with
 # $\eta_K < \theta_c \max_{K'}\eta_{K'}$, with $\theta_c = 0.05$. The cells marked for
 # enrichment are not coarsened, and $\theta_c$ is much smaller than the marking parameter for
 # enrichment, such that cells do not alternate between the two.
@@ -123,38 +124,47 @@ for k in range(params.pmin, params.pmax + 1):
 # + tags=["scroll-output"]
 degrees.set_degrees(np.full(degrees.num_owned_cells, 3, dtype=np.int32))
 print_header()
+enriched = solve_adaptive(approach, max_iterations=8, tol=1e-3, callback=print_iteration)
+
+degrees.set_degrees(np.full(degrees.num_owned_cells, 3, dtype=np.int32))
+print_header()
 coarsened = solve_adaptive(
     approach, max_iterations=8, tol=1e-3, coarsen_theta=0.05, callback=print_iteration
 )
 # -
 
-# The degree is lowered away from the bump, while it is increased close to it. We plot the error
-# and the number of degrees of freedom at each iteration, for the adaptive runs with and without
-# coarsening.
+# We plot the error and the number of degrees of freedom at each iteration of the two runs.
 
 if mesh.comm.rank == 0:
     plot_history(
-        {"adaptive": history, "adaptive with coarsening": coarsened},
+        {"from P3": enriched, "from P3, with coarsening": coarsened},
         "poisson_history.png",
         ylabel=r"$\Vert\nabla(u_h - u_{ex})\Vert_{L^2(\Omega)}$",
     )
 
 # ![history](./poisson_history.png)
 #
-# With coarsening, the number of degrees of freedom first decreases while the error decreases.
-# Once the cells at the bump reach $p_{max}$, the error cannot be reduced further on this mesh, and
-# the degrees only change for a few cells between the iterations.
+# Both runs enrich the cells close to the bump, and reach the same error once these cells have the
+# maximal degree, after which the error cannot be reduced further on this mesh. With coarsening,
+# the degree is also lowered away from the bump: the error decreases slightly slower in the first
+# iterations, but with less than half of the degrees of freedom.
 #
 # Against the number of degrees of freedom (with the iteration number next to each point of the
-# run with coarsening), the adaptive methods need far fewer degrees of freedom than a uniform degree
-# to reach the same error.
+# run with coarsening), all adaptive runs need far fewer degrees of freedom than a uniform degree
+# to reach the same error, and coarsening removes the degrees of freedom that the initial degree
+# put away from the bump.
 
 if mesh.comm.rank == 0:
     plot_convergence(
-        {"adaptive": history, "adaptive with coarsening": coarsened, "uniform degree": uniform},
+        {
+            "from P1": history,
+            "from P3": enriched,
+            "from P3, with coarsening": coarsened,
+            "uniform degree": uniform,
+        },
         "poisson_convergence.png",
         ylabel=r"$\Vert\nabla(u_h - u_{ex})\Vert_{L^2(\Omega)}$",
-        annotate=["adaptive with coarsening"],
+        annotate=["from P3, with coarsening"],
     )
 
 # ![convergence](./poisson_convergence.png)

@@ -43,7 +43,7 @@
 # ## Discretisation with a variable degree
 # The displacement is continuous within each region $\Omega_i$ of cells of degree $i$, and the
 # regions are coupled with Nitsche's method, as in
-# [the continuous demo](./demo_continuous.py). The Dirichlet condition is also imposed with
+# [the continuous demo](./demo_continuous). The Dirichlet condition is also imposed with
 # Nitsche's method. The latent variable lives on a submesh of the facets of $\Gamma$ of each
 # degree $i$, with the degree and continuity of the trace of the displacement. The nonlinear
 # problems are solved with {py:class}`dolfinx.fem.petsc.NonlinearProblem`.
@@ -97,7 +97,7 @@ problem = SignoriniProblem(
 # -
 
 # ## Error indicator
-# The error indicator is the one of the [elasticity demo](./demo_elasticity.py), where the
+# The error indicator is the one of the [elasticity demo](./demo_elasticity), where the
 # traction on $\Gamma$ is replaced by its residual: the difference between the traction and the
 # contact pressure,
 #

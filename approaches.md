@@ -2,8 +2,8 @@
 
 The library provides three representations of a space with a cell-wise polynomial degree. All of
 them assemble the same discrete problem, and give the same solution up to the quadrature.
-Problems with vector valued fields or several fields (linear elasticity and Stokes) are only
-implemented for the submesh approach.
+Problems with vector valued fields, several fields or fields on the boundary (linear
+elasticity, Stokes and Signorini) are only implemented for the submesh approach.
 
 | Approach | Space | Continuous spaces | Demo |
 |---|---|---|---|

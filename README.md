@@ -12,7 +12,8 @@ It provides three representations of such a space:
 - `HierarchicalApproach`: sub-matrices of one hierarchical (Legendre) DG space of the maximal degree
 
 It solves the Laplace eigenvalue problem, the Poisson equation, linear elasticity and the Stokes
-equations, in 2D and 3D.
+equations, in 2D and 3D, and the Signorini contact problem with the latent variable proximal point
+method.
 
 The documentation, with the method, the demos and a comparison of the approaches, is at
 <https://jorgensd.github.io/dolfinx_padapt/>.

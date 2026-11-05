@@ -19,6 +19,11 @@ indicator and the error measures. The library has the following problems:
   $\nabla\cdot u = 0$, $u = g$ on $\partial\Omega$, with a velocity of the degree of the cell and
   a pressure of one degree less {cite}`method-schotzau2002`, and a penalty on the jumps of the
   pressure {cite}`method-cockburn2002`.
+- {py:class}`dolfinx_padapt.models.SignoriniProblem`: linear elasticity with frictionless contact
+  against a rigid plane, $u\cdot\hat{n}\leq g$ on the contact boundary $\Gamma$. The constraint is
+  imposed with the latent variable proximal point (LVPP) method
+  {cite}`method-keith2024,method-dokken2025`, with a latent variable on $\Gamma$, see
+  [the Signorini demo](demos/demo_signorini).
 
 The source problems use a manufactured solution $u_{ex}$, with $f$ and $g$ computed from it, such
 that the error can be measured. The problems with vector valued or several fields are only
@@ -29,7 +34,8 @@ Discontinuous Galerkin spaces are coupled with the symmetric interior penalty (S
 {cite}`method-arnold1982,method-arnold2002`, and the Dirichlet condition is imposed weakly with
 Nitsche's method {cite}`method-nitsche1971`.
 Continuous spaces are only coupled by these terms on the interfaces between cells of different
-degrees.
+degrees. A field on the boundary (the latent variable of the Signorini problem) lives on a submesh
+of the facets of each degree, with the continuity of the trace of the fields on the cells.
 For the Laplacian, the residual is written once, with the boundary terms in $u - g$,
 
 $$
@@ -58,7 +64,11 @@ $\max(p^+, p^-)$ on an interior facet and the degree of the cell on the boundary
 Starting from degree $p_{min}$ on every cell, {py:func}`dolfinx_padapt.adaptivity.solve_adaptive`
 
 1. creates the space for the current degrees,
-2. assembles and solves the problem,
+2. assembles and solves the problem: an eigenvalue problem with SLEPc, a linear problem with
+   {py:class}`dolfinx.fem.petsc.LinearProblem`, and a nonlinear problem with
+   {py:class}`dolfinx.fem.petsc.NonlinearProblem` (Newton's method), inside the outer iteration
+   of the problem (e.g. the proximal point iterations of the Signorini problem,
+   {py:func}`dolfinx_padapt.proximal.proximal_point`),
 3. computes the error indicator,
 4. marks cells, and increases their degree by one.
 
@@ -90,6 +100,8 @@ $$
 $$
 
 An interior facet contributes to both of its cells, each with its own $h_K$ and $p_K$.
+The flux jumps are included on every interior facet, also for continuous spaces, where the jumps
+$[u_h]$ vanish inside a region of one degree, but the flux jumps do not.
 
 ### Marking
 The cells with $\eta_K > \theta \max_{K'}\eta_{K'}$ {cite}`method-babuska1978` are marked with

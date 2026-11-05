@@ -11,10 +11,10 @@ terms on the interfaces between them.
 
 The library provides three representations of a space with a cell-wise degree:
 
-- `SubmeshApproach`: one function space per degree, on a submesh of the cells with that degree,
-- `RestrictedApproach`: one function space per degree on the whole mesh, with its dofmap
+- {py:class}`SubmeshApproach`: one function space per degree, on a submesh of the cells with that degree,
+- {py:class}`RestrictedApproach`: one function space per degree on the whole mesh, with its dofmap
   restricted to the cells with that degree,
-- `HierarchicalApproach`: sub-matrices of a single hierarchical (Legendre) DG space of the
+- {py:class}`HierarchicalApproach`: sub-matrices of a single hierarchical (Legendre) DG space of the
   maximal degree.
 
 **We recommend the submesh approach.** It uses the mixed-domain assembly of DOLFINx, supports
@@ -26,9 +26,10 @@ The main model problem is the Laplace eigenvalue problem on the PacMan domain of
 [adaptive mesh refinement demo](https://jorgensd.github.io/dolfinx-tutorial/chapter2/amr.html)
 of the DOLFINx tutorial. Instead of refining the mesh, which has second order geometry and is
 generated with GMSH, we increase the degree of the cells with the largest error.
-The library also solves the Poisson equation (in 2D and 3D), linear elasticity and the Stokes
-equations, see the [Poisson](demos/demo_poisson), [elasticity](demos/demo_elasticity) and
-[Stokes](demos/demo_stokes) demos.
+The library also solves the Poisson equation (in 2D and 3D), linear elasticity, the Stokes
+equations and a contact problem, see the [Poisson](demos/demo_poisson),
+[elasticity](demos/demo_elasticity), [Stokes](demos/demo_stokes) and
+[Signorini](demos/demo_signorini) demos.
 
 - [Getting started](installation): installation, and running the demos and the tests.
 - [The method](method): the adaptive loop, the discretisation and the error indicator.

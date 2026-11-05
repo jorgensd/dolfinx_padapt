@@ -3,7 +3,9 @@
 `dolfinx_padapt` implements P-adaptive continuous and discontinuous Galerkin methods in
 [DOLFINx](https://github.com/FEniCS/dolfinx), where the polynomial degree varies from cell to
 cell and is increased where an error indicator is large. Spaces of different degrees are coupled
-with interior penalty (Nitsche) terms on the interfaces between them.
+with interior penalty (Nitsche) terms on the interfaces between them. Optionally, cells are split
+instead (h-refinement), or the choice between splitting and enriching a cell is made from the
+smoothness of the solution (hp-refinement).
 
 It provides three representations of such a space:
 

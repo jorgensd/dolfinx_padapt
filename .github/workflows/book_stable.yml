@@ -31,6 +31,9 @@ on:
 env:
   DEB_PYTHON_INSTALL_LAYOUT: deb_system
   LIBGL_ALWAYS_SOFTWARE: 1
+  VTK_DEFAULT_OPENGL_WINDOW: vtkOSOpenGLRenderWindow
+  PYVISTA_OFF_SCREEN: false
+  PYVISTA_JUPYTER_BACKEND: "html"
 
 jobs:
   latest:

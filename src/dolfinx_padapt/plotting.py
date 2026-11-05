@@ -53,8 +53,8 @@ def create_grids(
         Collective.
 
     Returns:
-        For each degree: the solution on a Lagrange grid of that degree and the nodes of
-        that grid. Also returns the (curved) edges of the owned cells.
+        The solution on a Lagrange grid of each degree, with the nodes of that grid, and the
+        (curved) edges of the owned cells.
     """
     mesh = approach.mesh
     degrees = approach.degrees

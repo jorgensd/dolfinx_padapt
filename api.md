@@ -19,7 +19,7 @@
 
 ```{eval-rst}
 .. automodule:: dolfinx_padapt.approaches
-   :members: Approach, BlockApproach, SubmeshApproach, RestrictedApproach, HierarchicalApproach, restrict_function_space
+   :members: Approach, BlockApproach, SubmeshApproach, RestrictedApproach, HierarchicalApproach, restrict_function_space, hierarchical_element
 ```
 
 ## Adaptivity

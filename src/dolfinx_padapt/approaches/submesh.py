@@ -15,7 +15,7 @@ class SubmeshApproach(BlockApproach):
     coordinate element of the parent mesh). At every update the submeshes are extracted and the
     forms are created over the parent mesh with the cell entity maps.
 
-    A field on the boundary (:attr:`dolfinx_padapt.problems.Field.boundary`) of degree ``i`` lives
+    A field on the boundary (see :class:`~dolfinx_padapt.problems.Field`) of degree ``i`` lives
     on a submesh of the facets with its marker whose cell has degree ``i``.
     """
 

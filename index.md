@@ -11,10 +11,10 @@ terms on the interfaces between them.
 
 The library provides three representations of a space with a cell-wise degree:
 
-- {py:class}`SubmeshApproach`: one function space per degree, on a submesh of the cells with that degree,
-- {py:class}`RestrictedApproach`: one function space per degree on the whole mesh, with its dofmap
+- {py:class}`~dolfinx_padapt.approaches.SubmeshApproach`: one function space per degree, on a submesh of the cells with that degree,
+- {py:class}`~dolfinx_padapt.approaches.RestrictedApproach`: one function space per degree on the whole mesh, with its dofmap
   restricted to the cells with that degree,
-- {py:class}`HierarchicalApproach`: sub-matrices of a single hierarchical (Legendre) DG space of the
+- {py:class}`~dolfinx_padapt.approaches.HierarchicalApproach`: sub-matrices of a single hierarchical (Legendre) DG space of the
   maximal degree.
 
 **We recommend the submesh approach.** It uses the mixed-domain assembly of DOLFINx, supports

@@ -74,24 +74,28 @@ BlockKey = tuple[int, str]  # (degree of the cells, name of the field)
 @dataclass
 class BlockForms:
     """Compiled block forms. The blocks are ordered by degree, and within a degree by the fields
-    of the problem, see :attr:`keys`."""
+    of the problem, see :attr:`~dolfinx_padapt.forms.BlockForms.keys`."""
 
+    #: The ``(degree, field)`` of each block
     keys: list[BlockKey]
+    #: The bilinear form of each pair of blocks (``None`` for a zero block)
     a: list[list[CompiledForm | None]]
-    #: Right hand side of each block: the diagonal blocks of the mass matrix (eigenvalue problem)
-    #: or the linear forms (source problem)
+    #: The right hand side of each block, i.e. the diagonal blocks of the mass matrix (eigenvalue
+    #: problem) or the linear forms (source problem)
     rhs: list[CompiledForm]
-    #: Estimator split into ``(i,)``: dx(i) + ds(i) and ``(i, j)``: dS(pair_tag(i, j))
+    #: The error indicator, split into ``(i,)`` for ``dx(i) + ds(i)``, and ``(i, j)`` for
+    #: ``dS(pair_tag(i, j))``
     eta: dict[tuple[int, ...], CompiledForm]
-    #: Error functionals of each degree, by name
+    #: The error functionals of each degree, by name
     errors: dict[int, dict[str, CompiledForm]]
-    u: dict[BlockKey, ufl.Coefficient]  # Placeholder for the solution of each block
+    #: Placeholder for the solution of each block
+    u: dict[BlockKey, ufl.Coefficient]
     #: Placeholder for a previous iterate of each block (nonlinear problems)
     u_prev: dict[BlockKey, ufl.Coefficient]
+    #: The cell size in the forms
     h: dolfinx.fem.Function
-    constants: list[
-        dolfinx.fem.Constant
-    ]  # Constants added to the forms (e.g. zero right hand sides)
+    #: Constants added to the forms (e.g. zero right hand sides)
+    constants: list[dolfinx.fem.Constant]
 
     def index(self, key: BlockKey) -> int:
         return self.keys.index(key)

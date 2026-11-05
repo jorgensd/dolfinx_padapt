@@ -35,10 +35,10 @@ class Field:
         degree_offset: The degree of the field is the degree of the cell plus this offset, e.g.
             ``-1`` for the pressure of the Stokes equations.
         boundary: If given, the field lives on the exterior facets with this marker (see
-            :attr:`Problem.facet_tags`), with the degree of the cell of each facet, and the
-            continuity of the fields on the cells (such that it matches their trace). Fields of
-            different degrees are not coupled, so the forms cannot have derivatives along the
-            boundary. Only supported by the submesh approach.
+            :attr:`~dolfinx_padapt.problems.Problem.facet_tags`), with the degree of the cell of
+            each facet, and the continuity of the fields on the cells (such that it matches their
+            trace). Fields of different degrees are not coupled, so the forms cannot have
+            derivatives along the boundary. Only supported by the submesh approach.
     """
 
     name: str
@@ -58,10 +58,12 @@ class Problem(abc.ABC):
     with the degree), ``gamma`` the penalty parameter (not scaled) and ``p`` the degree of the
     cells.
 
-    A problem with :attr:`boundary_markers` also gets the keyword argument ``ds_marker`` in
-    :meth:`residual` and :meth:`estimator`, a function returning the measure of the facets with
-    a given marker (of the cells of the current degree). A nonlinear problem gets the keyword
-    argument ``u_prev`` with the fields of a previous iterate, see :meth:`solve_nonlinear`.
+    A problem with :attr:`~dolfinx_padapt.problems.Problem.boundary_markers` also gets the
+    keyword argument ``ds_marker`` in :meth:`~dolfinx_padapt.problems.Problem.residual` and
+    :meth:`~dolfinx_padapt.problems.Problem.estimator`, a function returning the measure of the
+    facets with a given marker (of the cells of the current degree). A nonlinear problem gets the
+    keyword argument ``u_prev`` with the fields of a previous iterate, see
+    :meth:`~dolfinx_padapt.problems.Problem.solve_nonlinear`.
     """
 
     #: Whether the right hand side is a (mass) matrix rather than a vector
@@ -69,9 +71,10 @@ class Problem(abc.ABC):
     #: Fields that are only determined up to a constant, e.g. the pressure of the Stokes
     #: equations with Dirichlet conditions on the whole boundary
     nullspace_fields: tuple[str, ...] = ()
-    #: Whether the residual is nonlinear in the fields. Then ``u`` in :meth:`residual` is the
-    #: current iterate, the Jacobian is computed with :func:`ufl.derivative`, and the problem is
-    #: solved with :meth:`solve_nonlinear`
+    #: Whether the residual is nonlinear in the fields. Then ``u`` in
+    #: :meth:`~dolfinx_padapt.problems.Problem.residual` is the current iterate, the Jacobian is
+    #: computed with :func:`ufl.derivative`, and the problem is solved with
+    #: :meth:`~dolfinx_padapt.problems.Problem.solve_nonlinear`
     is_nonlinear: bool = False
 
     def __init__(self, mesh: dolfinx.mesh.Mesh):
@@ -96,8 +99,8 @@ class Problem(abc.ABC):
 
     @property
     def petsc_options(self) -> dict:
-        """PETSc options of the solver: a direct solver (MUMPS), and for a nonlinear problem
-        Newton's method with a backtracking line search (PETSc SNES)."""
+        """The PETSc options of the solver. By default a direct solver (MUMPS), and for a
+        nonlinear problem Newton's method with a backtracking line search (PETSc SNES)."""
         options = {
             "ksp_type": "preonly",
             "pc_type": "lu",
@@ -120,7 +123,8 @@ class Problem(abc.ABC):
 
     @property
     def facet_tags(self) -> dolfinx.mesh.MeshTags | None:
-        """Markers of the exterior facets, for :attr:`boundary_markers` and boundary fields."""
+        """Markers of the exterior facets, for
+        :attr:`~dolfinx_padapt.problems.Problem.boundary_markers` and boundary fields."""
         return None
 
     @property
@@ -167,7 +171,8 @@ class Problem(abc.ABC):
     ) -> PETSc.Vec:
         """Solve the discrete problem with the stiffness matrix ``A`` and the right hand side
         ``B`` (mass matrix or load vector), for approaches that assemble the system themselves.
-        By default, a linear system is solved with :attr:`petsc_options`."""
+        By default, a linear system is solved with
+        :attr:`~dolfinx_padapt.problems.Problem.petsc_options`."""
         return solve_linear(A, B, nullspace, self.petsc_options)
 
     def solve_nonlinear(self, approach) -> None:
@@ -184,5 +189,6 @@ class Problem(abc.ABC):
         uses the error indicator.
 
         Args:
-            integrals: The global integral of each of :meth:`error_integrands`.
+            integrals: The global integral of each of
+                :meth:`~dolfinx_padapt.problems.Problem.error_integrands`.
         """

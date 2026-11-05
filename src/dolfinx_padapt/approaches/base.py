@@ -193,9 +193,9 @@ class Approach(abc.ABC):
 class BlockApproach(Approach):
     """One space per polynomial degree, coupled through interface integrals.
 
-    All forms are compiled once (:func:`compile_block_forms`). Every update only creates
-    spaces for every degree and calls ``create_form`` with the new spaces and integration
-    entities.
+    All forms are compiled once (:func:`~dolfinx_padapt.forms.compile_block_forms`). Every
+    update only creates spaces for every degree and calls ``create_form`` with the new spaces
+    and integration entities.
     """
 
     def __init__(self, problem: Problem, params: Parameters):

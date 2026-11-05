@@ -35,7 +35,7 @@ sphinx:
       # `repository` and `html`, so the GitHub buttons are set here as well
       repository_url: https://github.com/jorgensd/dolfinx_padapt
       repository_branch: main
-      path_to_docs: .
+      path_to_docs: ""
       use_repository_button: true
       use_issues_button: true
       use_edit_page_button: true

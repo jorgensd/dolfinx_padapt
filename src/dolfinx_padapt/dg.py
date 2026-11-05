@@ -14,24 +14,25 @@ Flux = typing.Callable[[ufl.core.expr.Expr], ufl.core.expr.Expr]
 
 
 def jump(a_p, a_m, n):
-    """[a] = a⁺ ⊗ n⁺ + a⁻ ⊗ n⁻ (a⁺n⁺ + a⁻n⁻ for a scalar)."""
+    r"""The jump :math:`[\![a]\!] = a^+ \otimes n^+ + a^- \otimes n^-` (:math:`a^+ n^+ + a^- n^-`
+    for a scalar)."""
     if a_p.ufl_shape == ():
         return a_p("+") * n("+") + a_m("-") * n("-")
     return ufl.outer(a_p("+"), n("+")) + ufl.outer(a_m("-"), n("-"))
 
 
 def normal_jump(a_p, a_m, n):
-    """[a · n] = a⁺ · n⁺ + a⁻ · n⁻ of a vector."""
+    r"""The normal jump :math:`[\![a \cdot n]\!] = a^+ \cdot n^+ + a^- \cdot n^-` of a vector."""
     return ufl.dot(a_p("+"), n("+")) + ufl.dot(a_m("-"), n("-"))
 
 
 def average(a_p, a_m):
-    """{a} = (a⁺ + a⁻) / 2."""
+    r"""The average :math:`\{\!\{a\}\!\} = (a^+ + a^-) / 2`."""
     return 0.5 * (a_p("+") + a_m("-"))
 
 
 def sipg_interior(u_p, u_m, v_p, v_m, n, h, sigma, flux: Flux = ufl.grad):
-    """SIPG terms on an interior facet, with the penalty ``sigma / {h}``."""
+    r"""SIPG terms on an interior facet, with the penalty :math:`\sigma / \{\!\{h\}\!\}`."""
     return (
         -ufl.inner(average(flux(u_p), flux(u_m)), jump(v_p, v_m, n))
         - ufl.inner(jump(u_p, u_m, n), average(flux(v_p), flux(v_m)))
@@ -40,7 +41,7 @@ def sipg_interior(u_p, u_m, v_p, v_m, n, h, sigma, flux: Flux = ufl.grad):
 
 
 def nitsche_boundary(u, v, n, h, sigma, g=0.0, flux: Flux = ufl.grad):
-    """Nitsche terms for u = g on the boundary, with the penalty ``sigma / h``."""
+    r"""Nitsche terms for :math:`u = g` on the boundary, with the penalty :math:`\sigma / h`."""
     return (
         -ufl.inner(ufl.dot(flux(u), n), v)
         - ufl.inner(u - g, ufl.dot(flux(v), n))
@@ -49,9 +50,15 @@ def nitsche_boundary(u, v, n, h, sigma, g=0.0, flux: Flux = ufl.grad):
 
 
 def estimator_jumps(flux_jump, value_jump, h, p_p, p_m, jump_weight, w):
-    """The facet terms of the error indicator on an interior facet,
-    ``h_K/p_K ‖[flux]/2‖² + jump_weight p_K³/h_K ‖[u]/2‖²``, added to both cells (each with its
-    own ``h_K`` and ``p_K``)."""
+    r"""The facet terms of the error indicator on an interior facet,
+
+    .. math::
+
+        \frac{h_K}{p_K} \left\| \tfrac{1}{2} [\![\text{flux}]\!] \right\|^2
+        + c \frac{p_K^3}{h_K} \left\| \tfrac{1}{2} [\![u]\!] \right\|^2,
+
+    with :math:`c` the ``jump_weight``, added to both cells :math:`K` of the facet (each with its
+    own :math:`h_K` and :math:`p_K`)."""
     flux_part = ufl.inner(flux_jump, flux_jump) / 4
     value_part = ufl.inner(value_jump, value_jump) / 4
     return flux_part * (

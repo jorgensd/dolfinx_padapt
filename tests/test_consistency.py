@@ -18,14 +18,14 @@ from dolfinx_padapt.adaptivity import (
     mark_cells_for_coarsening,
 )
 from dolfinx_padapt.approaches import APPROACHES, hierarchical_element
-from dolfinx_padapt.eigen import solve_eigenproblem
 from dolfinx_padapt.forms import (
     Parameters,
     cell_size,
     nitsche_boundary,
     sipg_interior,
 )
-from dolfinx_padapt.problems import ElasticityProblem, StokesProblem
+from dolfinx_padapt.models import ElasticityProblem, StokesProblem
+from dolfinx_padapt.solvers import solve_eigenproblem
 
 QDEG = 8
 PMAX = 3
@@ -268,6 +268,36 @@ def test_poisson_mixed_degrees(cube):
         for key in ("L2", "H1"):
             assert np.isclose(values[key], values0[key], rtol=1e-8), (name, key)
         assert np.isclose(eta, eta0, rtol=1e-8), name
+
+
+@pytest.mark.parametrize("continuous", [False, True])
+@pytest.mark.parametrize("name", ["restricted", "submesh"])
+def test_estimator_uniform_degree(cube, name, continuous):
+    """With a uniform degree, the error indicator is the estimator of the problem on all cells
+    and facets (with the flux jumps on every interior facet, also for continuous spaces)."""
+    k = 2
+    params = Parameters(pmin=1, pmax=2, quadrature_degree=QDEG, continuous=continuous)
+    problem = PoissonProblem(cube, bump)
+    approach = APPROACHES[name](problem, params)
+    approach.degrees.set_degrees(np.full(owned_cells(cube), k, np.int32))
+    approach.update()
+    approach.solve()
+    eta = approach.estimate()
+
+    uh = dolfinx.fem.Function(dolfinx.fem.functionspace(cube, ("DG", k)))
+    approach.interpolate_solution(uh)
+    h = cell_size(cube)
+    Q = h.function_space
+    w = ufl.TestFunction(Q)
+    n = ufl.FacetNormal(cube)
+    md = {"quadrature_degree": QDEG}
+    dx, ds, dS = (ufl.Measure(m, domain=cube, metadata=md) for m in ("dx", "ds", "dS"))
+    form = problem.estimator({"u": uh}, h, k, params.alpha, w, dx, ds)
+    form += problem.estimator_interface({"u": uh}, {"u": uh}, n, h, k, k, params.alpha, w, dS)
+    eta2 = dolfinx.fem.assemble_vector(dolfinx.fem.form(form))
+    eta2.scatter_reverse(dolfinx.la.InsertMode.add)
+    eta_ref = np.sqrt(np.abs(eta2.array[Q.dofmap.list[: owned_cells(cube), 0]]))
+    assert np.allclose(eta, eta_ref, rtol=1e-8, atol=1e-12)
 
 
 def test_coarsen(mesh):

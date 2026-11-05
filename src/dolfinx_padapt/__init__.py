@@ -2,7 +2,8 @@
 
 from .degrees import DegreeField, pair_tag
 from .mesh import EXACT_EIGENVALUE, create_pacman
-from .problems import EigenvalueProblem, PoissonProblem, Problem
+from .models import EigenvalueProblem, PoissonProblem
+from .problems import Problem
 
 __all__ = [
     "EXACT_EIGENVALUE",

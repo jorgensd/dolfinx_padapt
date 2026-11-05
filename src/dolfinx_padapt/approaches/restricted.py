@@ -19,10 +19,11 @@ def restrict_function_space(
 
     An interior facet kernel always tabulates both cells of the facet, also on an interface
     where the space only lives on one side. The dofmap of a cell outside ``cells`` that shares
-    a facet with ``cells`` therefore points to the dofs of its neighbour inside ``cells``.
-    The contributions to these dofs are identically zero (the restriction to the outside cell
-    never appears in the form), and as they are added into an existing cell block the sparsity
-    pattern is unchanged. Rows of all other cells are ``-1``.
+    a facet with ``cells`` therefore points to the dofs of a neighbour inside ``cells`` (valid
+    local indices of the restricted space). The contributions to these dofs are identically
+    zero (the restriction to the outside cell never appears in the form). An outside cell with
+    several neighbours inside ``cells`` points to one of them, which can add zero entries
+    (coupling the neighbours) to the sparsity pattern. Rows of all other cells are ``-1``.
 
     Args:
         V: The parent space.

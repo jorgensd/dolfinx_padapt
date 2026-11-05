@@ -1,9 +1,10 @@
-"""Second order PacMan mesh generated with GMSH."""
+"""Second order meshes generated with GMSH: the PacMan domain and a half disk."""
 
 from mpi4py import MPI
 
 import dolfinx
 import gmsh
+import numpy as np
 
 #: First Dirichlet eigenvalue of the Laplacian on the PacMan domain (j_{2/3,1}^2)
 EXACT_EIGENVALUE = 3.375610652693620492628**2
@@ -12,10 +13,10 @@ EXACT_EIGENVALUE = 3.375610652693620492628**2
 def create_pacman(
     comm: MPI.Comm, h: float = 0.25, h_corner: float | None = None, order: int = 2, rank: int = 0
 ) -> dolfinx.mesh.Mesh:
-    """Create the unit disk with the quadrant x>0, y<0 removed.
+    r"""Create the unit disk with the quadrant :math:`x > 0, y < 0` removed.
 
     This is the domain of the `amr.py` NetGen demo in the DOLFINx tutorial, with a re-entrant
-    corner of angle 3π/2 at the origin.
+    corner of angle :math:`3\pi/2` at the origin.
 
     Args:
         comm: Communicator to distribute the mesh over.
@@ -69,3 +70,65 @@ def create_pacman(
     mesh.topology.create_connectivity(tdim - 1, tdim)
     mesh.topology.create_connectivity(tdim, tdim - 1)
     return mesh
+
+
+#: Marker of the flat (top) boundary of :func:`create_half_disk`
+HALF_DISK_FLAT = 1
+#: Marker of the curved (bottom) boundary of :func:`create_half_disk`
+HALF_DISK_CURVED = 2
+
+
+def create_half_disk(
+    comm: MPI.Comm,
+    radius: float = 0.5,
+    centre: float = 1.0,
+    h: float = 0.06,
+    order: int = 2,
+    rank: int = 0,
+) -> tuple[dolfinx.mesh.Mesh, dolfinx.mesh.MeshTags]:
+    r"""Create the lower half of the disk with the given radius and centre :math:`(0, c)`, the
+    domain of the Signorini problem in the FEniCS workshop.
+
+    Args:
+        comm: Communicator to distribute the mesh over.
+        radius: The radius of the disk.
+        centre: The :math:`y`-coordinate :math:`c` of the centre of the disk.
+        h: Characteristic cell size.
+        order: Order of the geometry.
+        rank: Rank generating the mesh with GMSH.
+
+    Returns:
+        The mesh, ghosted over shared facets (required for interior facet integrals), and the
+        facet tags, with :data:`HALF_DISK_FLAT` on the flat boundary and
+        :data:`HALF_DISK_CURVED` on the curved boundary.
+    """
+    gmsh.initialize()
+    gmsh.option.setNumber("General.Terminal", 0)
+    if comm.rank == rank:
+        gmsh.model.add("half_disk")
+        disk = gmsh.model.occ.addDisk(0, centre, 0, radius, radius)
+        top = gmsh.model.occ.addRectangle(-radius, centre, 0, 2 * radius, 1.1 * radius)
+        domain, _ = gmsh.model.occ.cut([(2, disk)], [(2, top)])
+        gmsh.model.occ.synchronize()
+        flat, curved = [], []
+        for dim, tag in gmsh.model.getBoundary(domain, oriented=False):
+            length = gmsh.model.occ.getMass(dim, tag)
+            (curved if np.isclose(length, np.pi * radius) else flat).append(tag)
+        gmsh.model.addPhysicalGroup(2, [tag for _, tag in domain], tag=1, name="domain")
+        gmsh.model.addPhysicalGroup(1, flat, tag=HALF_DISK_FLAT, name="flat")
+        gmsh.model.addPhysicalGroup(1, curved, tag=HALF_DISK_CURVED, name="curved")
+        gmsh.option.setNumber("Mesh.CharacteristicLengthMax", h)
+        gmsh.model.mesh.generate(2)
+        gmsh.model.mesh.setOrder(order)
+
+    mesh_data = dolfinx.io.gmsh.model_to_mesh(
+        gmsh.model, comm, rank, gdim=2, ghost_mode=dolfinx.mesh.GhostMode.shared_facet
+    )
+    gmsh.finalize()
+
+    mesh = mesh_data.mesh
+    tdim = mesh.topology.dim
+    mesh.topology.create_connectivity(tdim - 1, tdim)
+    mesh.topology.create_connectivity(tdim, tdim - 1)
+    assert mesh_data.facet_tags is not None
+    return mesh, mesh_data.facet_tags

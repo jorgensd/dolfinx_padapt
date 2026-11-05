@@ -1,4 +1,4 @@
-from .base import Approach
+from .base import Approach, BlockApproach
 from .hierarchical import HierarchicalApproach, hierarchical_element
 from .restricted import RestrictedApproach, restrict_function_space
 from .submesh import SubmeshApproach
@@ -10,6 +10,7 @@ APPROACHES: dict[str, type[Approach]] = {
 __all__ = [
     "APPROACHES",
     "Approach",
+    "BlockApproach",
     "HierarchicalApproach",
     "RestrictedApproach",
     "SubmeshApproach",

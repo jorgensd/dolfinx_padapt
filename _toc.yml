@@ -18,6 +18,7 @@ parts:
       - file: demos/demo_poisson.py
       - file: demos/demo_elasticity.py
       - file: demos/demo_stokes.py
+      - file: demos/demo_signorini.py
   - caption: Reference
     chapters:
       - file: api

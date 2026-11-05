@@ -1,5 +1,7 @@
 """Cell-wise polynomial degree field and the integration entities derived from it."""
 
+import typing
+
 from mpi4py import MPI
 
 import dolfinx
@@ -15,10 +17,19 @@ def pair_tag(i: int, j: int, pmax: int) -> int:
     return i * (pmax + 1) + j
 
 
-def degree_pairs(pmin: int, pmax: int, continuous: bool) -> list[tuple[int, int]]:
-    """All ``(i, j)``, ``i <= j``, interior facet combinations that are integrated over.
+def boundary_tag(marker: int, degree: int, pmax: int) -> int:
+    """Exterior facet tag for the facets with a given (non-negative) marker of the cells with a
+    given degree. Distinct from the tags ``0, ..., pmax`` of all exterior facets of each degree."""
+    assert marker >= 0
+    return (marker + 1) * (pmax + 1) + degree
 
-    For continuous spaces, the facets interior to a single degree region carry no jump terms.
+
+def degree_pairs(pmin: int, pmax: int, continuous: bool = False) -> list[tuple[int, int]]:
+    """All ``(i, j)``, ``i <= j``, interior facet combinations of the coupling terms.
+
+    For continuous spaces, the facets interior to a single degree region carry no coupling
+    terms (the jumps vanish), so ``(i, i)`` is left out. The error indicator integrates over all
+    combinations, as the flux jumps do not vanish.
     """
     return [
         (i, j)
@@ -164,24 +175,28 @@ class DegreeField:
         n = len(self.cell_degrees) if include_ghosts else self.num_owned_cells
         return np.flatnonzero(self.cell_degrees[:n] == degree).astype(np.int32)
 
-    def integration_entities(self, continuous: bool = False) -> IntegrationEntities:
+    def integration_entities(
+        self,
+        facet_tags: dolfinx.mesh.MeshTags | None = None,
+        markers: typing.Sequence[int] = (),
+    ) -> IntegrationEntities:
         """Integration entities (in parent mesh numbering) for every compiled subdomain id.
 
         - ``dx(i)``: cells of degree ``i``
         - ``ds(i)``: exterior facets of cells of degree ``i``
+        - ``ds(boundary_tag(m, i))``: exterior facets with marker ``m`` (in ``facet_tags``) of cells
+          of degree ``i``, for each of the ``markers``
         - ``dS(pair_tag(i, j))``: facets between cells of degree ``i`` and ``j``, where the
-          ``"+"`` restriction is the cell with the lowest degree.
+          ``"+"`` restriction is the cell with the lowest degree (also ``i == j``, which the
+          coupling terms of continuous spaces do not use, but the error indicator does).
 
         The interior facets are computed once with
         :func:`dolfinx.fem.compute_integration_domains`, and grouped by the degrees of their two
         cells.
 
         Args:
-            continuous: If ``True``, the facets between two cells of the same degree are left out
-                (no ``dS(pair_tag(i, i))``). With continuous spaces within each degree region, only
-                the interfaces between different degrees carry (Nitsche) coupling terms, as the
-                jumps vanish on the other facets. Must match the ``continuous`` parameter the forms
-                are compiled with (see :func:`degree_pairs`).
+            facet_tags: Markers of the exterior facets.
+            markers: The markers (in ``facet_tags``) with their own exterior facet integrals.
 
         Raises:
             ValueError: If the mesh is not ghosted with ``GhostMode.shared_facet``.
@@ -203,6 +218,15 @@ class DegreeField:
             entities[cell_type].append((i, self.cells(i)))
             ext_i = ext[degrees[ext[:, 0]] == i]
             entities[ext_type].append((i, np.ascontiguousarray(ext_i.reshape(-1))))
+        for marker in markers:
+            assert facet_tags is not None
+            facets = np.intersect1d(facet_tags.find(marker), boundary).astype(np.int32)
+            ext_m = dolfinx.fem.compute_integration_domains(ext_type, topology, facets)
+            ext_m = ext_m.reshape(-1, 2)
+            for i in range(self._pmin, self._pmax + 1):
+                ext_mi = ext_m[degrees[ext_m[:, 0]] == i]
+                tag = boundary_tag(marker, i, self._pmax)
+                entities[ext_type].append((tag, np.ascontiguousarray(ext_mi.reshape(-1))))
 
         # All interior facets owned by this process. Both cells of such a facet must be on the
         # process, which requires a mesh ghosted with GhostMode.shared_facet. Otherwise, an owned
@@ -225,7 +249,7 @@ class DegreeField:
         data[swap] = data[swap][:, [2, 3, 0, 1]]
         degree_plus = degrees[data[:, 0]]
         degree_minus = degrees[data[:, 2]]
-        for i, j in degree_pairs(self._pmin, self._pmax, continuous):
+        for i, j in degree_pairs(self._pmin, self._pmax):
             facets = data[(degree_plus == i) & (degree_minus == j)]
             entities[int_type].append((pair_tag(i, j, self._pmax), facets.reshape(-1)))
 

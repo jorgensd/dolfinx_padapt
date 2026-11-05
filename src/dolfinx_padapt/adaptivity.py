@@ -31,7 +31,7 @@ class IterationResult:
 
     iteration: int
     num_dofs: int
-    error: float  # The error measure of the problem (used to stop the loop)
+    error: float  # The error measure of the problem, or the error indicator (stops the loop)
     eta: float  # Global error indicator
     degrees: dict[int, int]  # Number of cells of each degree
     #: Values reported by the problem, e.g. the eigenvalue, or the L2 and H1 errors
@@ -149,14 +149,9 @@ def solve_adaptive(
         approach.update()
         timings["update"] = time.perf_counter() - t
 
+        # Assembly and solve
         t = time.perf_counter()
-        A, B = approach.assemble()
-        timings["assemble"] = time.perf_counter() - t
-
-        t = time.perf_counter()
-        x = problem.solve(A, B, approach.nullspace())
-        approach.set_solution(x)
-        x.destroy()
+        approach.solve()
         timings["solve"] = time.perf_counter() - t
 
         t = time.perf_counter()
@@ -164,11 +159,13 @@ def solve_adaptive(
         timings["estimate"] = time.perf_counter() - t
 
         error, values = problem.errors(approach.errors())
+        eta_global = float(np.sqrt(comm.allreduce(np.sum(eta**2), op=MPI.SUM)))
         result = IterationResult(
             iteration=it,
             num_dofs=approach.num_dofs,
-            error=error,
-            eta=float(np.sqrt(comm.allreduce(np.sum(eta**2), op=MPI.SUM))),
+            # Without an error measure, the error indicator is used
+            error=eta_global if error is None else error,
+            eta=eta_global,
             degrees=degree_histogram(degrees),
             values=values,
             timings=timings,

@@ -40,8 +40,8 @@ import ufl
 from dolfinx_padapt.adaptivity import solve_adaptive
 from dolfinx_padapt.approaches import SubmeshApproach
 from dolfinx_padapt.forms import Parameters
+from dolfinx_padapt.models import ElasticityProblem
 from dolfinx_padapt.plotting import Animation, plot_convergence
-from dolfinx_padapt.problems import ElasticityProblem
 
 mesh = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, 12, 12)
 x0 = (0.35, 0.6)

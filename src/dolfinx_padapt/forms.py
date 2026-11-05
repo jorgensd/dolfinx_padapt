@@ -23,17 +23,17 @@ import ufl
 from dolfinx.fem import compile_form
 from dolfinx.fem.forms import CompiledForm
 
-from .degrees import degree_pairs, pair_tag
+from .degrees import boundary_tag, degree_pairs, pair_tag
 from .dg import nitsche_boundary, sipg_interior  # noqa: F401
 from .problems import Problem
 
 
 class Penalty(str, Enum):
-    """Polynomial degree p in the penalty parameter σ = α p² / h."""
+    r"""Polynomial degree :math:`p` in the penalty parameter :math:`\sigma = \alpha p^2 / h`."""
 
-    #: p = max(p+, p-) on an interior facet, and the degree of the cell on the boundary
+    #: :math:`p = \max(p^+, p^-)` on an interior facet, and the degree of the cell on the boundary
     local = "local"
-    #: p = pmax everywhere
+    #: :math:`p = p_{max}` everywhere
     global_ = "global"
 
 
@@ -41,7 +41,7 @@ class Penalty(str, Enum):
 class Parameters:
     pmin: int = 1
     pmax: int = 6
-    alpha: float = 10.0  # Penalty parameter: σ = α p² / h
+    alpha: float = 10.0  # Penalty parameter: sigma = alpha p^2 / h
     penalty: Penalty | str = Penalty.local
     continuous: bool = False  # Continuous Lagrange within each degree region
     quadrature_degree: int | None = None  # Fixed quadrature degree (None: estimated)
@@ -86,6 +86,8 @@ class BlockForms:
     #: Error functionals of each degree, by name
     errors: dict[int, dict[str, CompiledForm]]
     u: dict[BlockKey, ufl.Coefficient]  # Placeholder for the solution of each block
+    #: Placeholder for a previous iterate of each block (nonlinear problems)
+    u_prev: dict[BlockKey, ufl.Coefficient]
     h: dolfinx.fem.Function
     constants: list[
         dolfinx.fem.Constant
@@ -121,6 +123,7 @@ def compile_block_forms(
     trial = dict(zip(keys, ufl.TrialFunctions(W)))
     test = dict(zip(keys, ufl.TestFunctions(W)))
     u_coeffs = {key: ufl.Coefficient(spaces[key]) for key in keys}
+    u_prev = {key: ufl.Coefficient(spaces[key]) for key in keys} if problem.is_nonlinear else {}
 
     def fields(functions, i):
         return {name: functions[(i, name)] for name in names}
@@ -129,17 +132,29 @@ def compile_block_forms(
     dx, ds, dS = params.measures(domain)
     n = ufl.FacetNormal(domain)
 
-    # The residual F(u; v). Its bilinear part is the stiffness matrix. The right hand side is the
-    # load vector, or the mass matrix of an eigenvalue problem.
+    def extra(i):
+        """The keyword arguments of a problem with marked boundaries, or a nonlinear problem."""
+        kwargs = {}
+        if problem.boundary_markers:
+            kwargs["ds_marker"] = lambda marker: ds(boundary_tag(marker, i, params.pmax))
+        if problem.is_nonlinear:
+            kwargs["u_prev"] = fields(u_prev, i)
+        return kwargs
+
+    # The residual F(u; v), where u is the trial function of a linear problem, and the current
+    # iterate of a nonlinear problem.
+    unknowns = u_coeffs if problem.is_nonlinear else trial
     F = 0
     for i in degrees:
         sigma = params.alpha * params.penalty_degree(i) ** 2
-        F += problem.residual(fields(trial, i), fields(test, i), n, h, sigma, dx(i), ds(i))
+        F += problem.residual(
+            fields(unknowns, i), fields(test, i), n, h, sigma, dx(i), ds(i), **extra(i)
+        )
     for i, j in degree_pairs(params.pmin, params.pmax, params.continuous):
         sigma = params.alpha * params.penalty_degree(i, j) ** 2
         F += problem.interface(
-            fields(trial, i),
-            fields(trial, j),
+            fields(unknowns, i),
+            fields(unknowns, j),
             fields(test, i),
             fields(test, j),
             n,
@@ -147,13 +162,21 @@ def compile_block_forms(
             sigma,
             dS(pair_tag(i, j, params.pmax)),
         )
-    a = ufl.lhs(F)
+    # The left hand side is the stiffness matrix (linear problem) or the Jacobian (nonlinear
+    # problem). The right hand side is the load vector, the mass matrix of an eigenvalue problem,
+    # or the residual of a nonlinear problem.
     zero_constants = []
-    if problem.is_eigenvalue_problem:
-        rhs = sum(problem.mass(fields(trial, i), fields(test, i), dx(i)) for i in degrees)
-        rhs_blocks = [ufl.extract_blocks(rhs)[k][k] for k in range(len(keys))]
+    if problem.is_nonlinear:
+        a = sum(ufl.derivative(F, u_coeffs[key], trial[key]) for key in keys)
+        rhs_blocks = list(ufl.extract_blocks(F))
     else:
-        rhs_blocks = list(ufl.extract_blocks(ufl.rhs(F)))
+        a = ufl.lhs(F)
+        if problem.is_eigenvalue_problem:
+            rhs = sum(problem.mass(fields(trial, i), fields(test, i), dx(i)) for i in degrees)
+            rhs_blocks = [ufl.extract_blocks(rhs)[k][k] for k in range(len(keys))]
+        else:
+            rhs_blocks = list(ufl.extract_blocks(ufl.rhs(F)))
+    if not problem.is_eigenvalue_problem:
         # Every block needs a linear form, also where the right hand side is zero
         for k, (i, name) in enumerate(keys):
             if rhs_blocks[k] is None:
@@ -164,8 +187,11 @@ def compile_block_forms(
     w = ufl.TestFunction(h.function_space)
     eta = {}
     for i in degrees:
-        eta[(i,)] = problem.estimator(fields(u_coeffs, i), h, i, params.alpha, w, dx(i), ds(i))
-    for i, j in degree_pairs(params.pmin, params.pmax, params.continuous):
+        eta[(i,)] = problem.estimator(
+            fields(u_coeffs, i), h, i, params.alpha, w, dx(i), ds(i), **extra(i)
+        )
+    # The flux jumps also on the facets inside a degree region of continuous spaces
+    for i, j in degree_pairs(params.pmin, params.pmax):
         form = problem.estimator_interface(
             fields(u_coeffs, i),
             fields(u_coeffs, j),
@@ -198,6 +224,7 @@ def compile_block_forms(
         eta={key: _compile(comm, form, opts) for key, form in eta.items()},
         errors=errors,
         u=u_coeffs,
+        u_prev=u_prev,
         h=h,
         constants=zero_constants,
     )

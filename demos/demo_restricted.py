@@ -51,16 +51,19 @@ PETSc.Sys.Print(
 
 # ```{admonition} Interface integrals see both cells
 # :class: warning
-# A kernel of an interior facet integral is always tabulated for *both* cells of the facet.
-# On the interface between a cell of degree $i$ and a cell of degree $j$, the space $V_i$ only
-# lives on one side, but the assembler still looks up the dofmap of the other cell.
-# The dofmap of a cell outside $\Omega_i$ that shares a facet with $\Omega_i$ therefore points to
-# the degrees of freedom of its neighbour in $\Omega_i$. The contributions to these are
-# identically zero, as the restriction of $V_i$ to the outside cell never appears in the form, and
-# they are added to an existing block of the matrix, so the sparsity pattern does not change.
-# All other cells have the dofmap entries `-1`.
-# With submeshes, the entity maps handle this, as a cell that is not part of a submesh is mapped
-# to `-1`, and the assembler skips it.
+# A kernel of an interior facet integral is always tabulated for *both* cells of the facet,
+# even if the form only uses one restriction of $V_i$. The assembler only treats a side as
+# missing from a space if its cell is mapped to `-1` by an entity map. With a submesh, a cell
+# outside the submesh is mapped to `-1`, and the assembler skips its dofmap. A restricted space
+# lives on the parent mesh, so there is no entity map, and the assembler reads the dofmap of
+# both cells (DOLFINx assumes a dofmap has valid entries on every cell of its mesh).
+# On the interface between a cell of degree $i$ and a cell of degree $j$, the dofmap of the cell
+# outside $\Omega_i$ therefore points to the degrees of freedom of a neighbour in $\Omega_i$
+# (valid local indices of $V_i$). The contributions to these are identically zero, as the
+# restriction of $V_i$ to the outside cell never appears in the form. An outside cell with
+# several neighbours in $\Omega_i$ points to one of them, which can add (zero) entries to the
+# sparsity pattern, coupling the neighbours. All other cells have the dofmap entries `-1`,
+# which the assembler never reads.
 # ```
 
 # On each process, the owned cells of degree 1 next to a cell of degree 2 point to the degrees of

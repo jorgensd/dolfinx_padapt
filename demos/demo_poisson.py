@@ -39,7 +39,7 @@
 # and the interface terms couple the degrees as in the [submesh demo](./demo_submesh).
 # The bilinear and linear forms are extracted from the residual with {py:func}`ufl.lhs` and
 # {py:func}`ufl.rhs`.
-# The problem is described by a {py:class}`dolfinx_padapt.problems.PoissonProblem`, which takes the
+# The problem is described by a {py:class}`dolfinx_padapt.models.PoissonProblem`, which takes the
 # manufactured solution as a function of the spatial coordinate:
 
 # +

@@ -6,16 +6,16 @@ shape and a degree relative to the degree of the cell. It provides the residual 
 boundary of one degree, the coupling terms on the interfaces between two degrees, the error
 indicator and the error measures. The library has the following problems:
 
-- {py:class}`dolfinx_padapt.problems.EigenvalueProblem`: $-\Delta u = \lambda u$, $u=0$ on
+- {py:class}`dolfinx_padapt.models.EigenvalueProblem`: $-\Delta u = \lambda u$, $u=0$ on
   $\partial\Omega$. The default domain is the PacMan domain of the
   [adaptive mesh refinement demo](https://jorgensd.github.io/dolfinx-tutorial/chapter2/amr.html)
   of the DOLFINx tutorial, with the first eigenvalue $\lambda = j_{2/3,1}^2 \approx 11.3947$.
   The eigenfunction behaves like $r^{2/3}$ at the re-entrant corner, so the mesh is graded
   towards it.
-- {py:class}`dolfinx_padapt.problems.PoissonProblem`: $-\Delta u = f$, $u = g$ on $\partial\Omega$.
-- {py:class}`dolfinx_padapt.problems.ElasticityProblem`: $-\nabla\cdot\sigma(u) = f$, $u = g$ on
+- {py:class}`dolfinx_padapt.models.PoissonProblem`: $-\Delta u = f$, $u = g$ on $\partial\Omega$.
+- {py:class}`dolfinx_padapt.models.ElasticityProblem`: $-\nabla\cdot\sigma(u) = f$, $u = g$ on
   $\partial\Omega$, for a vector valued displacement.
-- {py:class}`dolfinx_padapt.problems.StokesProblem`: $-\nu\Delta u + \nabla p = f$,
+- {py:class}`dolfinx_padapt.models.StokesProblem`: $-\nu\Delta u + \nabla p = f$,
   $\nabla\cdot u = 0$, $u = g$ on $\partial\Omega$, with a velocity of the degree of the cell and
   a pressure of one degree less {cite}`method-schotzau2002`, and a penalty on the jumps of the
   pressure {cite}`method-cockburn2002`.

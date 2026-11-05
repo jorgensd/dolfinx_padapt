@@ -7,11 +7,19 @@
    :members:
 ```
 
+## Models
+
+```{eval-rst}
+.. automodule:: dolfinx_padapt.models
+   :members:
+   :imported-members:
+```
+
 ## Approaches
 
 ```{eval-rst}
 .. automodule:: dolfinx_padapt.approaches
-   :members: Approach, SubmeshApproach, RestrictedApproach, HierarchicalApproach, restrict_function_space
+   :members: Approach, BlockApproach, SubmeshApproach, RestrictedApproach, HierarchicalApproach, restrict_function_space
 ```
 
 ## Adaptivity
@@ -49,10 +57,17 @@
    :members:
 ```
 
-## Eigenvalue solver
+## Solvers
 
 ```{eval-rst}
-.. automodule:: dolfinx_padapt.eigen
+.. automodule:: dolfinx_padapt.solvers
+   :members:
+```
+
+## Proximal point method
+
+```{eval-rst}
+.. automodule:: dolfinx_padapt.proximal
    :members:
 ```
 

@@ -10,13 +10,14 @@ import dolfinx
 from .adaptivity import IterationResult
 from .approaches import Approach
 
-PHASES = ("update", "assemble", "solve", "estimate")
+#: The phases of an iteration (the solve includes the assembly)
+PHASES = ("update", "solve", "estimate")
 
 
 def print_header():
     """Print the header of the table written by :func:`print_iteration`."""
     PETSc.Sys.Print(
-        f"{'it':>3} {'dofs':>8} {'error':>10} {'eta':>10} {'update':>7} {'assemble':>8}"
+        f"{'it':>3} {'dofs':>8} {'error':>10} {'eta':>10} {'update':>7}"
         f" {'solve':>7} {'estim.':>7}  values, degrees"
     )
 
@@ -28,7 +29,7 @@ def print_iteration(approach: Approach, result: IterationResult):
     values = ", ".join(f"{name}={value:.10g}" for name, value in result.values.items())
     PETSc.Sys.Print(
         f"{result.iteration:3d} {result.num_dofs:8d} {result.error:10.3e} {result.eta:10.3e}"
-        f" {t['update']:7.3f} {t['assemble']:8.3f} {t['solve']:7.3f} {t['estimate']:7.3f}"
+        f" {t['update']:7.3f} {t['solve']:7.3f} {t['estimate']:7.3f}"
         f"  {values}, {result.degrees}"
     )
 
@@ -71,7 +72,7 @@ def print_summary(
     """
     header = f"{'approach':>13} {'its':>4} {'dofs':>8} {'error':>10} {'max rel. diff':>13}"
     if timings:
-        header += f" {'update':>7} {'assemble':>8} {'solve':>7} {'estim.':>7}"
+        header += f" {'update':>7} {'solve':>7} {'estim.':>7}"
     PETSc.Sys.Print(header)
     reference = next(iter(histories.values()))
     for name, history in histories.items():
@@ -81,10 +82,7 @@ def print_summary(
         )
         if timings:
             total = total_timings(history)
-            row += (
-                f" {total['update']:7.3f} {total['assemble']:8.3f} {total['solve']:7.3f}"
-                f" {total['estimate']:7.3f}"
-            )
+            row += f" {total['update']:7.3f} {total['solve']:7.3f} {total['estimate']:7.3f}"
         PETSc.Sys.Print(row)
 
 
